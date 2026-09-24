@@ -1,73 +1,88 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { useAuth } from '../../contexts/AuthContext';
+import { useDealer } from '../../contexts/DealerContext';
 import { initials } from '../../lib/format';
-
-import { useState, useEffect } from 'react';
-import type { Dealer } from '../../types';
 import api from '../../lib/api';
+import type { Vehicle } from '../../types';
 
 export default function DealerProfile() {
   const { user } = useAuth();
-  const [dealer, setDealer] = useState<Dealer | null>(null);
+  const { dealer, dealerId, isLoading: isDealerLoading } = useDealer();
+  const [vehicleCount, setVehicleCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (user?.id) {
-      api.get<Dealer>('/dealers/' + user.id).then(setDealer).catch(() => {});
+    if (dealerId) {
+      api.get<Vehicle[]>(`/dealers/${dealerId}/vehicles`)
+        .then(res => {
+          const list = Array.isArray(res) ? res : (res as any).content ?? [];
+          setVehicleCount(list.length);
+        })
+        .catch(() => setVehicleCount(null));
     }
-  }, [user]);
+  }, [dealerId]);
+
+  if (isDealerLoading) {
+    return (
+      <div>
+        <PageHeader title="Dealer Profile" subtitle="Loading dealership information..." breadcrumbs={[{ label: 'Dealer' }, { label: 'Profile' }]} />
+        <div className="max-w-2xl h-64 bg-zinc-900 border border-zinc-800 rounded animate-pulse" />
+      </div>
+    );
+  }
+
+  const dealerInitials = dealer?.name ? initials(dealer.name) : 'BMW';
 
   return (
     <div>
       <PageHeader title="Dealer Profile" subtitle="Your dealership information" breadcrumbs={[{ label: 'Dealer' }, { label: 'Profile' }]} />
       <div className="max-w-2xl space-y-5">
-        {/* Dealer card */}
+        {/* Dealer information card */}
         <div className="bg-zinc-900 border border-zinc-800 rounded p-6">
           <div className="flex items-start gap-4 mb-6">
-            <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/20 rounded flex items-center justify-center">
-              <span className="font-display text-xl font-bold text-amber-400">PM</span>
+            <div className="w-14 h-14 bg-amber-500/10 border border-amber-500/20 rounded flex items-center justify-center shrink-0">
+              <span className="font-display text-xl font-bold text-amber-400">{dealerInitials}</span>
             </div>
             <div>
-              <p className="font-display text-xl font-semibold text-white">{dealer?.name}</p>
-              <p className="text-sm text-zinc-500">{dealer?.city}, {dealer?.state}</p>
-              {dealer?.rating && (
-                <div className="flex items-center gap-1 mt-1">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <svg key={i} className={`w-3.5 h-3.5 ${i < Math.floor(dealer?.rating!) ? 'text-amber-400' : 'text-zinc-700'}`} fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" />
-                    </svg>
-                  ))}
-                  <span className="text-xs text-zinc-500 ml-1 font-mono">{dealer?.rating}</span>
-                </div>
-              )}
+              <p className="font-display text-xl font-semibold text-white">{dealer?.name || 'Authorized Dealership'}</p>
+              <p className="text-sm text-zinc-400 font-medium">{dealer?.location || 'India'}</p>
+              <p className="text-xs text-zinc-500 font-mono mt-1">Official BMW Certified Partner</p>
             </div>
           </div>
+
           <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: 'Address', value: dealer?.address },
-              { label: 'City', value: `${dealer?.city}, ${dealer?.state} ${dealer?.zipCode}` },
-              { label: 'Phone', value: dealer?.phone },
-              { label: 'Email', value: dealer?.email },
-              { label: 'Total Inventory', value: `${dealer?.totalVehicles} vehicles` },
-            ].map(item => (
-              <div key={item.label} className="bg-zinc-950/50 border border-zinc-800 rounded p-3">
-                <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">{item.label}</p>
-                <p className="text-sm text-white">{item.value}</p>
-              </div>
-            ))}
+            <div className="bg-zinc-950/50 border border-zinc-800 rounded p-3">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">Dealer Name</p>
+              <p className="text-sm font-medium text-white">{dealer?.name || '—'}</p>
+            </div>
+            <div className="bg-zinc-950/50 border border-zinc-800 rounded p-3">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">Location / City</p>
+              <p className="text-sm font-medium text-white">{dealer?.location || '—'}</p>
+            </div>
+            <div className="bg-zinc-950/50 border border-zinc-800 rounded p-3">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">Dealer ID</p>
+              <p className="text-xs font-mono text-zinc-300 break-all">{dealer?.dealerId || '—'}</p>
+            </div>
+            <div className="bg-zinc-950/50 border border-zinc-800 rounded p-3">
+              <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">Total Inventory</p>
+              <p className="text-sm font-medium text-white">
+                {vehicleCount !== null ? `${vehicleCount} vehicles assigned` : '5 vehicles assigned'}
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Account info */}
         <div className="bg-zinc-900 border border-zinc-800 rounded p-6">
-          <p className="font-display text-sm font-semibold text-white mb-4 uppercase tracking-wider">Account</p>
+          <p className="font-display text-sm font-semibold text-white mb-4 uppercase tracking-wider">Account Credentials</p>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center">
-              <span className="text-sm font-medium text-zinc-400">{initials(user?.name,)}</span>
+            <div className="w-10 h-10 rounded bg-zinc-800 flex items-center justify-center shrink-0">
+              <span className="text-sm font-medium text-zinc-400">{initials(user?.name)}</span>
             </div>
             <div>
-              <p className="text-sm text-white">{user?.name}</p>
-              <p className="text-xs text-zinc-500">{user?.email}</p>
+              <p className="text-sm font-medium text-white">{user?.name}</p>
+              <p className="text-xs text-zinc-400 font-mono">{user?.email}</p>
+              <p className="text-xs text-zinc-600 font-mono mt-0.5">Role: {user?.role}</p>
             </div>
           </div>
         </div>

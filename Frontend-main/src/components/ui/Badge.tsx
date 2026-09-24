@@ -41,25 +41,31 @@ export function VehicleStatusBadge({ status }: { status: VehicleStatus }) {
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-export function OrderStatusBadge({ status }: { status: OrderStatus }) {
-  const map: Record<OrderStatus, { variant: BadgeVariant; label: string }> = {
-    PENDING: { variant: 'warning', label: 'Pending' },
+export function OrderStatusBadge({ status }: { status: OrderStatus | string }) {
+  const map: Record<string, { variant: BadgeVariant; label: string }> = {
+    CREATED: { variant: 'default', label: 'Created' },
     CONFIRMED: { variant: 'info', label: 'Confirmed' },
-    PROCESSING: { variant: 'accent', label: 'Processing' },
+    IN_PRODUCTION: { variant: 'warning', label: 'In Production' },
+    SHIPPED: { variant: 'accent', label: 'Shipped' },
     DELIVERED: { variant: 'success', label: 'Delivered' },
     CANCELLED: { variant: 'danger', label: 'Cancelled' },
+    // Backwards compatibility
+    PENDING: { variant: 'warning', label: 'Pending' },
+    PROCESSING: { variant: 'accent', label: 'Processing' },
   };
   const { variant, label } = map[status] ?? { variant: 'muted', label: status };
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-export function AppointmentStatusBadge({ status }: { status: AppointmentStatus }) {
-  const map: Record<AppointmentStatus, { variant: BadgeVariant; label: string }> = {
+export function AppointmentStatusBadge({ status }: { status: AppointmentStatus | string }) {
+  const map: Record<string, { variant: BadgeVariant; label: string }> = {
     REQUESTED: { variant: 'warning', label: 'Requested' },
-    SCHEDULED: { variant: 'info', label: 'Scheduled' },
     CONFIRMED: { variant: 'accent', label: 'Confirmed' },
+    IN_PROGRESS: { variant: 'info', label: 'In Progress' },
     COMPLETED: { variant: 'success', label: 'Completed' },
     CANCELLED: { variant: 'danger', label: 'Cancelled' },
+    // Backwards compatibility
+    SCHEDULED: { variant: 'info', label: 'Scheduled' },
   };
   const { variant, label } = map[status] ?? { variant: 'muted', label: status };
   return <Badge variant={variant}>{label}</Badge>;

@@ -26,11 +26,11 @@ export const MOCK_DEALERS: Dealer[] = [
 
 export const MOCK_ORDERS: Order[] = [
   { id: 'uuid-o-1', customerId: 'uuid-c-1', vehicleId: 'uuid-v-2', dealerId: 'uuid-d-1', status: 'DELIVERED', totalAmount: 118500, createdAt: '2024-11-15T10:00:00Z' },
-  { id: 'uuid-o-2', customerId: 'uuid-c-1', vehicleId: 'uuid-v-1', dealerId: 'uuid-d-2', status: 'PROCESSING', totalAmount: 122000, createdAt: '2024-12-01T14:30:00Z' },
+  { id: 'uuid-o-2', customerId: 'uuid-c-1', vehicleId: 'uuid-v-1', dealerId: 'uuid-d-2', status: 'IN_PRODUCTION', totalAmount: 122000, createdAt: '2024-12-01T14:30:00Z' },
   { id: 'uuid-o-3', customerId: 'uuid-c-2', vehicleId: 'uuid-v-4', dealerId: 'uuid-d-1', status: 'CONFIRMED', totalAmount: 134000, createdAt: '2024-12-10T09:15:00Z' },
 ];
 
 export const MOCK_APPOINTMENTS: Appointment[] = [
-  { id: 'uuid-a-1', customerId: 'uuid-c-1', vehicleId: 'uuid-v-2', dealerId: 'uuid-d-1', serviceType: 'MAINTENANCE', status: 'SCHEDULED', appointmentDate: '2025-01-15T09:00:00Z' },
+  { id: 'uuid-a-1', customerId: 'uuid-c-1', vehicleId: 'uuid-v-2', dealerId: 'uuid-d-1', serviceType: 'MAINTENANCE', status: 'CONFIRMED', appointmentDate: '2025-01-15T09:00:00Z' },
   { id: 'uuid-a-2', customerId: 'uuid-c-1', vehicleId: 'uuid-v-2', dealerId: 'uuid-d-1', serviceType: 'INSPECTION', status: 'COMPLETED', appointmentDate: '2024-10-20T11:00:00Z' },
 ];

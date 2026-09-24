@@ -661,24 +661,29 @@ public class AuthorizationFilter extends OncePerRequestFilter {
             /*
              * GET ORDERS BY DEALER
              *
-             * DEALER can access dealer orders.
-             *
-             * IMPORTANT:
-             * We still need to verify that dealerId belongs
-             * to the logged-in dealer. The filter alone cannot
-             * safely determine that yet.
+             * DEALER can only access their own dealership's orders.
+             * Prevents cross-dealer IDOR.
              */
             if (method.equals("GET")
                     && path.matches("/api/v1/orders/dealers/[^/]+")) {
 
-                    if (hasRole(userId, "DEALER")) {
+                if (hasRole(userId, "DEALER")) {
+                    String dealerIdPart = path.substring("/api/v1/orders/dealers/".length());
+                    try {
+                        UUID requestedDealerId = UUID.fromString(dealerIdPart);
+                        if (authorizationService.isDealerOwner(userId, requestedDealerId)) {
+                            filterChain.doFilter(
+                                    new UserIdRequestWrapper(request, userId, "DEALER", requestedDealerId),
+                                    response
+                            );
+                            return;
+                        }
+                    } catch (IllegalArgumentException ignored) {}
 
-                        filterChain.doFilter(
-                                new UserIdRequestWrapper(request, userId, "DEALER"),
-                                response
-                        );
-                        return;
-                    }
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write("Access denied: you can only view your own dealership's orders");
+                    return;
+                }
 
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.getWriter().write(
@@ -691,18 +696,20 @@ public class AuthorizationFilter extends OncePerRequestFilter {
              * GET ORDER BY ID
              *
              * CUSTOMER and DEALER can access an order,
-             * but ownership must be verified by the
-             * Order Service because the URL contains
-             * orderId, not customerId/dealerId.
+             * but ownership is verified by the Order Service using
+             * customerId (userId) or dealerId (X-Dealer-Id).
              */
             if (method.equals("GET")
                     && path.matches("/api/v1/orders/[^/]+")) {
 
-                if (hasRole(userId, "CUSTOMER")
-                        || hasRole(userId, "DEALER")) {
+                if (hasRole(userId, "CUSTOMER")) {
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, "CUSTOMER"), response);
+                    return;
+                }
 
-                    String role = hasRole(userId, "CUSTOMER") ? "CUSTOMER" : "DEALER";
-                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, role), response);
+                if (hasRole(userId, "DEALER")) {
+                    UUID dealerId = authorizationService.getDealerId(userId);
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, "DEALER", dealerId), response);
                     return;
                 }
 
@@ -761,14 +768,14 @@ public class AuthorizationFilter extends OncePerRequestFilter {
             /*
              * CREATE DEALER
              *
-             * DEALER can create their own dealer profile.
+             * ADMIN only. Dealer self-registration is disabled.
              */
             if (method.equals("POST")
                     && path.equals("/dealers")) {
 
-                if (hasRole(userId, "DEALER")) {
+                if (hasRole(userId, "ADMIN")) {
                     filterChain.doFilter(
-                            new UserIdRequestWrapper(request, userId),
+                            new UserIdRequestWrapper(request, userId, "ADMIN"),
                             response
                     );
                     return;
@@ -776,7 +783,7 @@ public class AuthorizationFilter extends OncePerRequestFilter {
 
                 response.setStatus(HttpServletResponse.SC_FORBIDDEN);
                 response.getWriter().write(
-                        "Access denied: DEALER role required"
+                        "Access denied: ADMIN role required"
                 );
                 return;
             }
@@ -793,7 +800,7 @@ public class AuthorizationFilter extends OncePerRequestFilter {
              *
              * DEALER only.
              *
-             * X-User-Id is passed to Dealer Service
+             * X-User-Id and X-Dealer-Id are passed to Dealer Service
              * so Dealer Service can find the dealer
              * belonging to the logged-in user.
              */
@@ -801,9 +808,33 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                     && path.equals("/dealers/me")) {
 
                 if (hasRole(userId, "DEALER")) {
-
+                    UUID dealerId = authorizationService.getDealerId(userId);
                     filterChain.doFilter(
-                            new UserIdRequestWrapper(request, userId),
+                            new UserIdRequestWrapper(request, userId, "DEALER", dealerId),
+                            response
+                    );
+                    return;
+                }
+
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.getWriter().write(
+                        "Access denied: DEALER role required"
+                );
+                return;
+            }
+
+            /*
+             * GET MY CUSTOMERS
+             *
+             * DEALER only. Returns only customers associated with this dealer.
+             */
+            if (method.equals("GET")
+                    && path.equals("/dealers/me/customers")) {
+
+                if (hasRole(userId, "DEALER")) {
+                    UUID dealerId = authorizationService.getDealerId(userId);
+                    filterChain.doFilter(
+                            new UserIdRequestWrapper(request, userId, "DEALER", dealerId),
                             response
                     );
                     return;
@@ -827,7 +858,8 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                 if (hasRole(userId, "CUSTOMER")
                         || hasRole(userId, "DEALER")) {
 
-                    filterChain.doFilter(request, response);
+                    String role = hasRole(userId, "CUSTOMER") ? "CUSTOMER" : "DEALER";
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, role), response);
                     return;
                 }
 
@@ -849,7 +881,8 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                 if (hasRole(userId, "CUSTOMER")
                         || hasRole(userId, "DEALER")) {
 
-                    filterChain.doFilter(request, response);
+                    String role = hasRole(userId, "CUSTOMER") ? "CUSTOMER" : "DEALER";
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, role), response);
                     return;
                 }
 
@@ -871,7 +904,8 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                 if (hasRole(userId, "CUSTOMER")
                         || hasRole(userId, "DEALER")) {
 
-                    filterChain.doFilter(request, response);
+                    String role = hasRole(userId, "CUSTOMER") ? "CUSTOMER" : "DEALER";
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, role), response);
                     return;
                 }
 
@@ -885,18 +919,32 @@ public class AuthorizationFilter extends OncePerRequestFilter {
             /*
              * GET DEALER VEHICLES
              *
-             * CUSTOMER + DEALER
-             *
-             * Ownership check should eventually verify that
-             * dealerId belongs to the logged-in dealer.
+             * CUSTOMER + DEALER.
+             * For DEALER role: must be their own dealership. Prevents cross-dealer inventory browsing.
              */
             if (method.equals("GET")
                     && path.matches("/dealers/[^/]+/vehicles")) {
 
-                if (hasRole(userId, "CUSTOMER")
-                        || hasRole(userId, "DEALER")) {
+                if (hasRole(userId, "DEALER")) {
+                    String dealerIdPart = path.substring("/dealers/".length(), path.length() - "/vehicles".length());
+                    try {
+                        UUID requestedDealerId = UUID.fromString(dealerIdPart);
+                        if (authorizationService.isDealerOwner(userId, requestedDealerId)) {
+                            filterChain.doFilter(
+                                    new UserIdRequestWrapper(request, userId, "DEALER", requestedDealerId),
+                                    response
+                            );
+                            return;
+                        }
+                    } catch (IllegalArgumentException ignored) {}
 
-                    filterChain.doFilter(request, response);
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write("Access denied: you can only view your own dealership's inventory");
+                    return;
+                }
+
+                if (hasRole(userId, "CUSTOMER")) {
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, "CUSTOMER"), response);
                     return;
                 }
 
@@ -906,6 +954,7 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                 );
                 return;
             }
+
             /*
              * GET CUSTOMER FROM DEALER SERVICE
              *
@@ -915,8 +964,11 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                     && path.matches("/dealers/customer/[^/]+")) {
 
                 if (hasRole(userId, "DEALER")) {
-
-                    filterChain.doFilter(request, response);
+                    UUID dealerId = authorizationService.getDealerId(userId);
+                    filterChain.doFilter(
+                            new UserIdRequestWrapper(request, userId, "DEALER", dealerId),
+                            response
+                    );
                     return;
                 }
 
@@ -931,17 +983,14 @@ public class AuthorizationFilter extends OncePerRequestFilter {
              * UPDATE ORDER
              *
              * DEALER only.
-             *
-             * The Order Service should eventually verify
-             * that the order belongs to this dealer.
              */
             if (method.equals("PUT")
                     && path.matches("/dealers/orders/[^/]+")) {
 
                 if (hasRole(userId, "DEALER")) {
-
+                    UUID dealerId = authorizationService.getDealerId(userId);
                     filterChain.doFilter(
-                            new UserIdRequestWrapper(request, userId),
+                            new UserIdRequestWrapper(request, userId, "DEALER", dealerId),
                             response
                     );
                     return;
@@ -953,20 +1002,30 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                 );
                 return;
             }
+
             /*
              * GET ORDER
              *
-             * DEALER only.
+             * DEALER only — must be their own dealership's orders.
              */
             if (method.equals("GET")
                     && path.matches("/dealers/orders/[^/]+")) {
 
                 if (hasRole(userId, "DEALER")) {
+                    String dealerIdPart = path.substring("/dealers/orders/".length());
+                    try {
+                        UUID requestedDealerId = UUID.fromString(dealerIdPart);
+                        if (authorizationService.isDealerOwner(userId, requestedDealerId)) {
+                            filterChain.doFilter(
+                                    new UserIdRequestWrapper(request, userId, "DEALER", requestedDealerId),
+                                    response
+                            );
+                            return;
+                        }
+                    } catch (IllegalArgumentException ignored) {}
 
-                    filterChain.doFilter(
-                            new UserIdRequestWrapper(request, userId),
-                            response
-                    );
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write("Access denied: you can only view your own dealership's orders");
                     return;
                 }
 
@@ -976,6 +1035,41 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                 );
                 return;
             }
+
+            /*
+             * PATCH APPOINTMENT STATUS VIA DEALER SERVICE
+             *
+             * DEALER only — must be appointment for this dealership.
+             */
+            if (method.equals("PATCH")
+                    && path.matches("/dealers/appointments/[^/]+/status")) {
+
+                if (hasRole(userId, "DEALER")) {
+                    String[] parts = path.split("/");
+                    try {
+                        UUID appointmentId = UUID.fromString(parts[3]);
+                        if (authorizationService.isAppointmentDealer(userId, appointmentId)) {
+                            UUID dealerId = authorizationService.getDealerId(userId);
+                            filterChain.doFilter(
+                                    new UserIdRequestWrapper(request, userId, "DEALER", dealerId),
+                                    response
+                            );
+                            return;
+                        }
+                    } catch (IllegalArgumentException ignored) {}
+
+                    response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                    response.getWriter().write("Access denied: appointment does not belong to your dealership");
+                    return;
+                }
+
+                response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                response.getWriter().write(
+                        "Access denied: DEALER role required"
+                );
+                return;
+            }
+
             /*
              * UPDATE DEALER
              *
@@ -1073,8 +1167,8 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                     String dealerIdPart = path.substring("/api/appointments/dealers/".length());
                     try {
                         UUID requestedDealerId = UUID.fromString(dealerIdPart);
-                        if (userId.equals(requestedDealerId)) { // Dealer owns this
-                            filterChain.doFilter(new UserIdRequestWrapper(request, userId, "DEALER"), response);
+                        if (authorizationService.isDealerOwner(userId, requestedDealerId)) { // Dealer owns this
+                            filterChain.doFilter(new UserIdRequestWrapper(request, userId, "DEALER", requestedDealerId), response);
                             return;
                         }
                     } catch (IllegalArgumentException ignored) {}
@@ -1095,7 +1189,8 @@ public class AuthorizationFilter extends OncePerRequestFilter {
 
                 if (hasRole(userId, "ADMIN") || hasRole(userId, "CUSTOMER") || hasRole(userId, "DEALER")) {
                     String role = hasRole(userId, "ADMIN") ? "ADMIN" : (hasRole(userId, "DEALER") ? "DEALER" : "CUSTOMER");
-                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, role), response);
+                    UUID dealerId = "DEALER".equals(role) ? authorizationService.getDealerId(userId) : null;
+                    filterChain.doFilter(new UserIdRequestWrapper(request, userId, role, dealerId), response);
                     return;
                 }
 
@@ -1251,7 +1346,8 @@ public class AuthorizationFilter extends OncePerRequestFilter {
                             userId,
                             appointmentId
                     )) {
-                        filterChain.doFilter(request, response);
+                        UUID dealerId = authorizationService.getDealerId(userId);
+                        filterChain.doFilter(new UserIdRequestWrapper(request, userId, "DEALER", dealerId), response);
                         return;
                     }
 

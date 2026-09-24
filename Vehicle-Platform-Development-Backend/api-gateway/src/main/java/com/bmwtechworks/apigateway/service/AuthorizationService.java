@@ -105,13 +105,40 @@ public class AuthorizationService {
             UUID currentUserId,
             UUID appointmentId
     ) {
+        try {
+            AppointmentClient.AppointmentResponse appointment =
+                    getAppointment(appointmentId);
 
-        AppointmentClient.AppointmentResponse appointment =
-                getAppointment(appointmentId);
+            if (appointment == null) {
+                return false;
+            }
 
-        DealerClient.DealerResponse dealer =
-                dealerClient.getMyDealer(currentUserId);
+            DealerClient.DealerResponse dealer =
+                    dealerClient.getMyDealer(currentUserId);
 
-        return dealer.dealerId().equals(appointment.dealerId());
+            return dealer != null
+                    && dealer.dealerId() != null
+                    && dealer.dealerId().equals(appointment.dealerId());
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public UUID getDealerId(UUID currentUserId) {
+        try {
+            DealerClient.DealerResponse dealer =
+                    dealerClient.getMyDealer(currentUserId);
+            return dealer != null ? dealer.dealerId() : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    public boolean isDealerOwner(UUID currentUserId, UUID requestedDealerId) {
+        if (currentUserId == null || requestedDealerId == null) {
+            return false;
+        }
+        UUID myDealerId = getDealerId(currentUserId);
+        return myDealerId != null && myDealerId.equals(requestedDealerId);
     }
 }

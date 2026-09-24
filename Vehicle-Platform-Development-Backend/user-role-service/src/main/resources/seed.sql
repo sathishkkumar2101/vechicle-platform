@@ -149,7 +149,7 @@ VALUES
         'customer2',
         'Customer2',
         'customer2@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$4GsNO91pHexPO9.fJsajJ.KsnTrFxwMjvKgfVLvAc8q2GdSeOKPdO',
         'f2f947ac-465b-4ec2-9c59-3d1f3a0e75f2'
     ),
 
@@ -158,7 +158,7 @@ VALUES
         'customer3',
         'Customer3',
         'customer3@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$4GsNO91pHexPO9.fJsajJ.KsnTrFxwMjvKgfVLvAc8q2GdSeOKPdO',
         'f2f947ac-465b-4ec2-9c59-3d1f3a0e75f2'
     ),
 
@@ -167,7 +167,7 @@ VALUES
         'customer4',
         'Customer4',
         'customer4@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$4GsNO91pHexPO9.fJsajJ.KsnTrFxwMjvKgfVLvAc8q2GdSeOKPdO',
         'f2f947ac-465b-4ec2-9c59-3d1f3a0e75f2'
     ),
 
@@ -185,7 +185,7 @@ VALUES
         'dealer2',
         'Dealer2',
         'dealer2@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$TVQXxi00lwNfHYE97V.2meOK5W3OGodUaKPh9r1fzqMSUMAv2JCFu',
         '00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f'
     ),
 
@@ -194,7 +194,7 @@ VALUES
         'dealer3',
         'Dealer3',
         'dealer3@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$TVQXxi00lwNfHYE97V.2meOK5W3OGodUaKPh9r1fzqMSUMAv2JCFu',
         '00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f'
     ),
 
@@ -203,7 +203,7 @@ VALUES
         'dealer4',
         'Dealer4',
         'dealer4@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$TVQXxi00lwNfHYE97V.2meOK5W3OGodUaKPh9r1fzqMSUMAv2JCFu',
         '00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f'
     ),
 
@@ -212,7 +212,7 @@ VALUES
         'dealer5',
         'Dealer5',
         'dealer5@bmwtechworks.com',
-        '$2y$10$xhGCk0i/2Lg5VjZSI25HbuAs9F3bjJJN1MWtTsLKa1W5Ekv5eH7Uu',
+        '$2a$10$TVQXxi00lwNfHYE97V.2meOK5W3OGodUaKPh9r1fzqMSUMAv2JCFu',
         '00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f'
     )
     ON CONFLICT (id) DO NOTHING;

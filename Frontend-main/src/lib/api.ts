@@ -22,7 +22,7 @@ async function request<T>(
     headers,
   });
 
-  if (response.status === 401) {
+  if (response.status === 401 && !path.startsWith('/api/auth/')) {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
     window.location.href = '/login';

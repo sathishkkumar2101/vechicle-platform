@@ -186,7 +186,7 @@ public class UserService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() ->
-                        new RuntimeException(
+                        new com.bmwtechworks.userroleservice.exception.InvalidCredentialsException(
                                 "Invalid email or password"
                         )
                 );
@@ -198,7 +198,7 @@ public class UserService {
                 );
 
         if (!validPassword) {
-            throw new RuntimeException(
+            throw new com.bmwtechworks.userroleservice.exception.InvalidCredentialsException(
                     "Invalid email or password"
             );
         }

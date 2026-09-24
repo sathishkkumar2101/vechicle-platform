@@ -27,9 +27,9 @@ export interface LoginResponse {
 }
 
 export type VehicleStatus = 'AVAILABLE' | 'SOLD' | 'RESERVED';
-export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PROCESSING' | 'DELIVERED' | 'CANCELLED';
-export type AppointmentStatus = 'REQUESTED' | 'SCHEDULED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED';
-export type ServiceType = 'MAINTENANCE' | 'REPAIR' | 'INSPECTION' | 'WARRANTY' | 'DETAILING';
+export type OrderStatus = 'CREATED' | 'CONFIRMED' | 'IN_PRODUCTION' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+export type AppointmentStatus = 'REQUESTED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+export type ServiceType = 'MAINTENANCE' | 'REPAIR' | 'INSPECTION' | 'WARRANTY' | 'DETAILING' | string;
 
 export interface Vehicle {
   vehicleId: string;
