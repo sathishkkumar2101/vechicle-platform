@@ -1,0 +1,367 @@
+services:
+
+  # =========================
+  # PostgreSQL Databases
+  # =========================
+
+  postgres-order:
+    image: postgres:17
+    container_name: postgres-order
+    environment:
+      POSTGRES_DB: order
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"
+    volumes:
+      - order-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d order"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-customer:
+    image: postgres:17
+    container_name: postgres-customer
+    environment:
+      POSTGRES_DB: customer
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5434:5432"
+    volumes:
+      - customer-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d customer"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-dealer:
+    image: postgres:17
+    container_name: postgres-dealer
+    environment:
+      POSTGRES_DB: dealer_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5435:5432"
+    volumes:
+      - dealer-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dealer_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-vehicle:
+    image: postgres:17
+    container_name: postgres-vehicle
+    environment:
+      POSTGRES_DB: vehicle_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5436:5432"
+    volumes:
+      - vehicle-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d vehicle_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-service-appointment:
+    image: postgres:17
+    container_name: postgres-service-appointment
+    environment:
+      POSTGRES_DB: service_appointment
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5437:5432"
+    volumes:
+      - service-appointment-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d service_appointment"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-permission:
+    image: postgres:17
+    container_name: postgres-permission
+    environment:
+      POSTGRES_DB: permission_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5438:5432"
+    volumes:
+      - permission-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d permission_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  postgres-user-role:
+    image: postgres:17
+    container_name: postgres-user-role
+    environment:
+      POSTGRES_DB: user_role_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5439:5432"
+    volumes:
+      - user-role-data:/var/lib/postgresql/data
+    networks:
+      - vehicle-platform-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d user_role_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  # =========================
+  # Eureka Server
+  # =========================
+
+  eureka-server:
+    build:
+      context: ./eureka-server
+    container_name: eureka-server
+    ports:
+      - "8761:8761"
+    networks:
+      - vehicle-platform-network
+
+
+  # =========================
+  # Microservices
+  # =========================
+
+  order:
+    build:
+      context: ./order
+    container_name: order-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-order:5432/order
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+  customer:
+    build:
+      context: ./customer
+    container_name: customer-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-customer:5432/customer
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-customer:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+  dealer:
+    build:
+      context: ./dealer
+    container_name: dealer-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-dealer:5432/dealer_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-dealer:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+  vehicle:
+    build:
+      context: ./vehicle
+    container_name: vehicle-service
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-vehicle:5432/vehicle_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-vehicle:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+  permission-service:
+    build:
+      context: ./permission-service
+    container_name: permission-service
+    ports:
+      - "8091:8091"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-permission:5432/permission_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-permission:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+  user-role-service:
+    build:
+      context: ./user-role-service
+    container_name: user-role-service
+    ports:
+      - "8092:8092"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-user-role:5432/user_role_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-user-role:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+  service-appointment:
+    build:
+      context: ./service-appointment
+    container_name: service-appointment
+    ports:
+      - "8100:8100"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-service-appointment:5432/service_appointment
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+    depends_on:
+      postgres-service-appointment:
+        condition: service_healthy
+      eureka-server:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+
+  # =========================
+  # API Gateway
+  # =========================
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    depends_on:
+      eureka-server:
+        condition: service_started
+      customer:
+        condition: service_started
+      order:
+        condition: service_started
+      dealer:
+        condition: service_started
+      vehicle:
+        condition: service_started
+      permission-service:
+        condition: service_started
+      user-role-service:
+        condition: service_started
+      service-appointment:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+
+  # =========================
+  # Frontend
+  # =========================
+
+  frontend:
+    build:
+      context: ../Frontend-main
+    container_name: frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      api-gateway:
+        condition: service_started
+    networks:
+      - vehicle-platform-network
+
+
+# =========================
+# Volumes
+# =========================
+
+volumes:
+  order-data:
+    name: order-data
+
+  customer-data:
+    name: customer-data
+
+  dealer-data:
+    name: dealer-data
+
+  vehicle-data:
+    name: vehicle-data
+
+  service-appointment-data:
+    name: service-appointment-data
+
+  permission-data:
+    name: permission-data
+
+  user-role-data:
+    name: user-role-data
+
+
+# =========================
+# Network
+# =========================
+
+networks:
+  vehicle-platform-network:
+    name: vehicle-platform-network
