@@ -131,3 +131,17 @@ export interface DashboardStats {
   totalAppointments?: number;
   scheduledAppointments?: number;
 }
+
+export interface Permission {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface RoleDetail {
+  id: string;
+  name: string;
+  description?: string;
+  permissions?: Permission[];
+}
+

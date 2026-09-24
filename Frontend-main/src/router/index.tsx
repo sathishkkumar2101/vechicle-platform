@@ -38,6 +38,9 @@ const AdminDealers = React.lazy(() => import('../pages/admin/Dealers'));
 const AdminCustomers = React.lazy(() => import('../pages/admin/Customers'));
 const AdminOrders = React.lazy(() => import('../pages/admin/Orders'));
 const AdminAppointments = React.lazy(() => import('../pages/admin/Appointments'));
+const AdminRolesPermissions = React.lazy(() => import('../pages/admin/RolesPermissions'));
+const AdminProfile = React.lazy(() => import('../pages/admin/Profile'));
+
 
 function LoadingScreen() {
   return (
@@ -147,6 +150,8 @@ export const router = createBrowserRouter([
       { path: 'customers', element: <SuspenseWrapper><AdminCustomers /></SuspenseWrapper> },
       { path: 'orders', element: <SuspenseWrapper><AdminOrders /></SuspenseWrapper> },
       { path: 'appointments', element: <SuspenseWrapper><AdminAppointments /></SuspenseWrapper> },
+      { path: 'roles-permissions', element: <SuspenseWrapper><AdminRolesPermissions /></SuspenseWrapper> },
+      { path: 'profile', element: <SuspenseWrapper><AdminProfile /></SuspenseWrapper> },
     ],
   },
   { path: '*', element: <Navigate to="/" replace /> },

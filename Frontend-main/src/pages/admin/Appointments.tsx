@@ -4,55 +4,111 @@ import { Table } from '../../components/ui/Table';
 import { AppointmentStatusBadge } from '../../components/ui/Badge';
 import { Select } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
+import { Modal } from '../../components/ui/Modal';
+import { Button } from '../../components/ui/Button';
+import { useToast } from '../../components/ui/Toast';
 import { formatDate, formatCurrency } from '../../lib/format';
 import api from '../../lib/api';
-import type { Appointment, PageResponse } from '../../types';
+import type { Appointment, AppointmentStatus, Dealer, PageResponse } from '../../types';
 
 const STATUS_OPTIONS = [
   { value: '', label: 'All Status' },
-  { value: 'SCHEDULED', label: 'Scheduled' },
+  { value: 'REQUESTED', label: 'Requested' },
   { value: 'CONFIRMED', label: 'Confirmed' },
+  { value: 'IN_PROGRESS', label: 'In Progress' },
   { value: 'COMPLETED', label: 'Completed' },
   { value: 'CANCELLED', label: 'Cancelled' },
 ];
 
 export default function AdminAppointments() {
+  const { success, error } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [dealers, setDealers] = useState<Dealer[]>([]);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('');
+  const [dealerFilter, setDealerFilter] = useState('');
   const [page, setPage] = useState(0);
 
+  // Status update modal
+  const [selectedAppt, setSelectedAppt] = useState<Appointment | null>(null);
+  const [newStatus, setNewStatus] = useState<AppointmentStatus>('REQUESTED');
+  const [updating, setUpdating] = useState(false);
+
   useEffect(() => {
-    setLoading(true);
-    api.get<PageResponse<Appointment> | Appointment[]>('/api/appointments')
-      .then(res => setAppointments(Array.isArray(res) ? res : res.content ?? []))
-      .catch(() => setAppointments([]))
-      .finally(() => setLoading(false));
+    fetchAppointments();
   }, [page]);
 
-  const filtered = appointments.filter(a => !status || a.status === status);
+  function fetchAppointments() {
+    setLoading(true);
+    Promise.all([
+      api.get<PageResponse<Appointment> | Appointment[]>('/api/appointments').catch(() => []),
+      api.get<Dealer[]>('/dealers').catch(() => []),
+    ]).then(([a, d]) => {
+      setAppointments(Array.isArray(a) ? a : (a as any).content ?? []);
+      setDealers(Array.isArray(d) ? d : (d as any).content ?? []);
+    }).finally(() => setLoading(false));
+  }
+
+  const dealerOptions = [
+    { value: '', label: 'All Dealers' },
+    ...dealers.map(d => ({ value: d.dealerId, label: d.name }))
+  ];
+
+  const filtered = appointments.filter(a => {
+    if (status && a.status !== status) return false;
+    if (dealerFilter && a.dealerId !== dealerFilter) return false;
+    return true;
+  });
+
+  function openApptModal(appt: Appointment) {
+    setSelectedAppt(appt);
+    setNewStatus(appt.status);
+  }
+
+  async function handleUpdateStatus() {
+    if (!selectedAppt) return;
+    setUpdating(true);
+    try {
+      await api.patch(`/api/appointments/${selectedAppt.id}/status`, {
+        status: newStatus,
+      });
+      setAppointments(prev => prev.map(a => a.id === selectedAppt.id ? { ...a, status: newStatus } : a));
+      success(`Appointment status updated to ${newStatus}`);
+      setSelectedAppt(null);
+    } catch (err: any) {
+      error(err.message || 'Failed to update appointment status.');
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   return (
     <div>
-      <PageHeader title="Appointments" subtitle="Platform-wide service appointment management" breadcrumbs={[{ label: 'Admin' }, { label: 'Appointments' }]} />
-      <div className="w-40 mb-4"><Select options={STATUS_OPTIONS} value={status} onChange={e => setStatus(e.target.value)} /></div>
+      <PageHeader title="Appointments" subtitle="Platform-wide service appointment scheduling and tracking" breadcrumbs={[{ label: 'Admin' }, { label: 'Appointments' }]} />
+      
+      <div className="flex flex-wrap gap-3 mb-4">
+        <div className="w-40"><Select options={STATUS_OPTIONS} value={status} onChange={e => setStatus(e.target.value)} /></div>
+        <div className="w-44"><Select options={dealerOptions} value={dealerFilter} onChange={e => setDealerFilter(e.target.value)} /></div>
+        <span className="text-xs text-zinc-600 self-center ml-auto font-mono">{filtered.length} appointments</span>
+      </div>
+
       <div className="bg-zinc-900 border border-zinc-800 rounded overflow-hidden">
         <Table
           loading={loading}
           data={filtered.slice(page * 10, (page + 1) * 10)}
           keyExtractor={a => a.id}
-          emptyMessage="No appointments"
+          emptyMessage="No appointments found"
           columns={[
-            { key: 'id', header: '#', width: '70px', render: a => <span className="font-mono text-zinc-500">#{a.id}</span> },
+            { key: 'id', header: '#', width: '90px', render: a => <span className="font-mono text-xs text-zinc-500">#{a.id.slice(0, 8)}</span> },
             { key: 'customer', header: 'Customer', render: a => (
-              <span>{a.customer ? `${a.customer.name}` : `Customer #${a.customerId}`}</span>
+              <span>{a.customer ? a.customer.name : `Customer #${a.customerId.slice(0, 8)}`}</span>
             )},
             { key: 'service', header: 'Service', render: a => (
-              <span className="capitalize">{a.serviceType.toLowerCase().replace(/_/g, ' ')}</span>
+              <span className="capitalize font-medium text-white">{a.serviceType.toLowerCase().replace(/_/g, ' ')}</span>
             )},
             { key: 'date', header: 'Scheduled', render: a => (
               <div>
-                <p>{formatDate(a.scheduledDate)}</p>
+                <p>{formatDate(a.scheduledDate || a.appointmentDate)}</p>
                 {a.scheduledTime && <p className="text-xs text-zinc-600 font-mono">{a.scheduledTime}</p>}
               </div>
             )},
@@ -60,10 +116,49 @@ export default function AdminAppointments() {
             { key: 'cost', header: 'Est. Cost', align: 'right', render: a => (
               <span className="font-mono text-xs">{a.estimatedCost ? formatCurrency(a.estimatedCost) : '—'}</span>
             )},
+            { key: 'actions', header: '', align: 'right', render: a => (
+              <button
+                onClick={() => openApptModal(a)}
+                className="text-amber-400 hover:text-amber-300 text-xs font-mono px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 transition-colors"
+              >
+                Update Status
+              </button>
+            )},
           ]}
         />
-        <Pagination page={page} totalPages={Math.ceil(filtered.length / 10)} totalElements={filtered.length} pageSize={10} onPageChange={setPage} />
+        <Pagination page={page} totalPages={Math.max(1, Math.ceil(filtered.length / 10))} totalElements={filtered.length} pageSize={10} onPageChange={setPage} />
       </div>
+
+      {/* Appointment Status Modal */}
+      <Modal open={!!selectedAppt} onClose={() => setSelectedAppt(null)} title="Update Appointment Status">
+        {selectedAppt && (
+          <div className="space-y-4">
+            <div className="bg-zinc-950 p-4 rounded border border-zinc-800 space-y-1 text-xs text-zinc-400 font-mono">
+              <p><span className="text-zinc-600">ID:</span> {selectedAppt.id}</p>
+              <p><span className="text-zinc-600">Service:</span> {selectedAppt.serviceType}</p>
+              <p><span className="text-zinc-600">Current Status:</span> {selectedAppt.status}</p>
+            </div>
+
+            <Select
+              label="Transition Status To:"
+              options={[
+                { value: 'REQUESTED', label: 'REQUESTED — Initial request' },
+                { value: 'CONFIRMED', label: 'CONFIRMED — Confirmed by dealer' },
+                { value: 'IN_PROGRESS', label: 'IN_PROGRESS — Vehicle in service bay' },
+                { value: 'COMPLETED', label: 'COMPLETED — Service completed' },
+                { value: 'CANCELLED', label: 'CANCELLED — Appointment cancelled' },
+              ]}
+              value={newStatus}
+              onChange={e => setNewStatus(e.target.value as AppointmentStatus)}
+            />
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
+              <Button type="button" variant="secondary" onClick={() => setSelectedAppt(null)}>Cancel</Button>
+              <Button type="button" onClick={handleUpdateStatus} loading={updating}>Save Status</Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
