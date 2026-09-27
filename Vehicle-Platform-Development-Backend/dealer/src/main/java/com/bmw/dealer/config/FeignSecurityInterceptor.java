@@ -6,6 +6,7 @@ import feign.RequestInterceptor;
 import feign.RequestTemplate;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
@@ -17,10 +18,23 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class FeignSecurityInterceptor implements RequestInterceptor {
 
+    private static final String INTERNAL_SECRET_HEADER = "X-Internal-Secret";
+
     private final DealerRepository dealerRepository;
+
+    @Value("${INTERNAL_SERVICE_SECRET:}")
+    private String internalSecret;
 
     @Override
     public void apply(RequestTemplate template) {
+        // Service-to-service routes under /api/internal/** are authenticated by
+        // the shared secret rather than a JWT, because the caller is another
+        // service and has no token to present.
+        if (internalSecret != null && !internalSecret.isBlank()
+                && !template.headers().containsKey(INTERNAL_SECRET_HEADER)) {
+            template.header(INTERNAL_SECRET_HEADER, internalSecret);
+        }
+
         ServletRequestAttributes attributes =
                 (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes != null) {

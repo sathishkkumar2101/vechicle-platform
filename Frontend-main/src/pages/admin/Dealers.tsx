@@ -2,16 +2,22 @@ import React, { useEffect, useState } from 'react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Table } from '../../components/ui/Table';
 import { Button } from '../../components/ui/Button';
-import { SearchInput, Input } from '../../components/ui/Input';
+import { SearchInput, Input, Select } from '../../components/ui/Input';
 import { Pagination } from '../../components/ui/Pagination';
 import { Modal, ConfirmDialog } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
+import { LoadError } from '../../components/ui/LoadError';
+import { useLoadFailures } from '../../hooks/useLoadFailures';
 import api from '../../lib/api';
-import type { Dealer, PageResponse } from '../../types';
+import type { Dealer, PageResponse, User, Vehicle } from '../../types';
 
 export default function AdminDealers() {
   const { success, error } = useToast();
+  const { failures, clear, retry, guard, has, reloadToken } = useLoadFailures();
+  const [loadFailures, setLoadFailures] = useState<{ resource: string; error: unknown }[]>([]);
   const [dealers, setDealers] = useState<Dealer[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -20,13 +26,9 @@ export default function AdminDealers() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingDealer, setEditingDealer] = useState<Dealer | null>(null);
   const [formData, setFormData] = useState({
+    username: '',
     name: '',
-    city: '',
-    state: '',
-    email: '',
-    phone: '',
-    address: '',
-    zipCode: '',
+    location: '',
   });
   const [saving, setSaving] = useState(false);
 
@@ -36,40 +38,59 @@ export default function AdminDealers() {
 
   useEffect(() => {
     fetchDealers();
-  }, [page]);
+  }, [page, reloadToken]);
 
   function fetchDealers() {
     setLoading(true);
-    api.get<PageResponse<Dealer> | Dealer[]>('/dealers')
-      .then(res => setDealers(Array.isArray(res) ? res : res.content ?? []))
-      .catch(() => setDealers([]))
+    Promise.all([
+      guard<PageResponse<Dealer> | Dealer[]>('dealers')(
+        api.get<PageResponse<Dealer> | Dealer[]>('/dealers')),
+      guard<PageResponse<User> | User[]>('users')(
+        api.get<PageResponse<User> | User[]>('/api/users')),
+      guard<PageResponse<Vehicle> | Vehicle[]>('vehicles')(
+        api.get<PageResponse<Vehicle> | Vehicle[]>('/api/vehicles')),
+    ])
+      .then(([d, u, v]) => {
+        setDealers(Array.isArray(d) ? d : d.content ?? []);
+        setUsers(Array.isArray(u) ? u : u.content ?? []);
+        setVehicles(Array.isArray(v) ? v : v.content ?? []);
+      })
+      .catch((error: unknown) => {
+        // Each request above is already guarded, so reaching here means the
+        // mapping itself failed. Swallowing it would blank the table back to
+        // "no dealers" after a banner had been shown for a different section,
+        // so it is reported too.
+        setLoadFailures((previous) => [...previous, { resource: 'dealers', error }]);
+        setDealers([]);
+      })
       .finally(() => setLoading(false));
   }
 
-  const filtered = dealers.filter(d => !search || `${d.name} ${d.city} ${d.email}`.toLowerCase().includes(search.toLowerCase()));
+  const filtered = dealers.filter(d => !search || `${d.name} ${d.location ?? ''}`.toLowerCase().includes(search.toLowerCase()));
+
+  const vehicleCountByDealer = (dealerId: string) => vehicles.filter(v => v.dealerId === dealerId).length;
+  const userById = (userId?: string) => users.find(u => u.id === userId);
+  const unlinkedUserOptions = [
+    { value: '', label: 'Select a dealer account…' },
+    ...users
+      .filter(u => u.role === 'DEALER' && !dealers.some(d => d.userId === u.id))
+      .map(u => ({ value: u.username ?? '', label: `${u.name} — ${u.username}` })),
+  ];
 
   function openModal(dealer?: Dealer) {
     if (dealer) {
       setEditingDealer(dealer);
       setFormData({
+        username: userById(dealer.userId)?.username ?? '',
         name: dealer.name || '',
-        city: dealer.city || '',
-        state: dealer.state || '',
-        email: dealer.email || '',
-        phone: dealer.phone || '',
-        address: dealer.address || '',
-        zipCode: dealer.zipCode || '',
+        location: dealer.location || '',
       });
     } else {
       setEditingDealer(null);
       setFormData({
+        username: '',
         name: '',
-        city: '',
-        state: '',
-        email: '',
-        phone: '',
-        address: '',
-        zipCode: '',
+        location: '',
       });
     }
     setModalOpen(true);
@@ -77,14 +98,18 @@ export default function AdminDealers() {
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.email.trim()) return;
+    if (!formData.name.trim()) return;
+    if (!editingDealer && !formData.username.trim()) {
+      error('Username is required to link a dealer to a user account.');
+      return;
+    }
     setSaving(true);
     try {
       if (editingDealer) {
-        await api.put(`/dealers/${editingDealer.dealerId}`, formData);
+        await api.put(`/dealers/${editingDealer.dealerId}`, { name: formData.name, location: formData.location });
         success('Dealer details updated successfully.');
       } else {
-        await api.post('/dealers', formData);
+        await api.post('/dealers', { username: formData.username, name: formData.name, location: formData.location });
         success('Dealer registered successfully.');
       }
       setModalOpen(false);
@@ -113,6 +138,15 @@ export default function AdminDealers() {
 
   return (
     <div>
+
+      {failures.length > 0 && (
+        <div className="mb-4 space-y-3">
+          {[...failures, ...loadFailures].map((failure, i) => (
+            <LoadError key={i} resource={failure.resource} error={failure.error} onRetry={retry} />
+          ))}
+        </div>
+      )}
+
       <PageHeader
         title="Dealers"
         subtitle="Manage authorized dealership partners across regions"
@@ -128,7 +162,7 @@ export default function AdminDealers() {
           loading={loading}
           data={filtered.slice(page * 10, (page + 1) * 10)}
           keyExtractor={d => d.dealerId}
-          emptyMessage="No dealers found"
+          emptyMessage={has('dealers') ? 'Could not load dealers' : 'No dealers found'}
           columns={[
             {
               key: 'name',
@@ -136,25 +170,28 @@ export default function AdminDealers() {
               render: d => (
                 <div>
                   <p className="text-white font-medium">{d.name}</p>
-                  <p className="text-xs text-zinc-500">{d.city}{d.state ? `, ${d.state}` : ''}</p>
+                  <p className="text-xs text-zinc-500">{d.location || '—'}</p>
                 </div>
               ),
             },
             {
-              key: 'contact',
-              header: 'Contact',
-              render: d => (
-                <div>
-                  <p className="text-sm text-zinc-300">{d.email}</p>
-                  <p className="text-xs text-zinc-500 font-mono">{d.phone || '—'}</p>
-                </div>
-              ),
+              key: 'account',
+              header: 'Linked Account',
+              render: d => {
+                const user = userById(d.userId);
+                return (
+                  <div>
+                    <p className="text-sm text-zinc-300">{user?.username ?? '—'}</p>
+                    <p className="text-xs text-zinc-500 font-mono">{d.userId ?? 'unlinked'}</p>
+                  </div>
+                );
+              },
             },
             {
               key: 'inventory',
               header: 'Inventory',
               align: 'right',
-              render: d => <span className="font-mono text-zinc-300">{d.totalVehicles ?? '—'}</span>,
+              render: d => <span className="font-mono text-zinc-300">{vehicleCountByDealer(d.dealerId)}</span>,
             },
             {
               key: 'actions',
@@ -187,15 +224,23 @@ export default function AdminDealers() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editingDealer ? 'Edit Dealer' : 'Add New Dealer'}>
         <form onSubmit={handleSave} className="space-y-4">
           <Input label="Dealership Name" placeholder="e.g. BMW Chennai" value={formData.name} onChange={e => setFormData({ ...formData, name: e.target.value })} required />
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="City" placeholder="Chennai" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
-            <Input label="State" placeholder="Tamil Nadu" value={formData.state} onChange={e => setFormData({ ...formData, state: e.target.value })} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Input label="Email Address" type="email" placeholder="dealer@bmwtechworks.com" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} required />
-            <Input label="Phone Number" placeholder="+91 9876543210" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
-          </div>
-          <Input label="Street Address" placeholder="123 Regional Highway" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} />
+          {editingDealer ? (
+            <Input label="Location" placeholder="Chennai" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} />
+          ) : (
+            <>
+              <Select
+                label="Linked User Account"
+                options={unlinkedUserOptions}
+                value={formData.username}
+                onChange={e => setFormData({ ...formData, username: e.target.value })}
+                disabled={unlinkedUserOptions.length === 1}
+                hint={unlinkedUserOptions.length === 1
+                  ? 'No DEALER account is available. Create a user with the DEALER role first, then return here.'
+                  : 'The dealership is run by this account. Only DEALER accounts without an existing dealership are listed.'}
+              />
+              <Input label="Location" placeholder="Chennai" value={formData.location} onChange={e => setFormData({ ...formData, location: e.target.value })} />
+            </>
+          )}
 
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
             <Button type="button" variant="secondary" onClick={() => setModalOpen(false)}>Cancel</Button>

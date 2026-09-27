@@ -1,5 +1,6 @@
 package com.bmwtechworks.order.service;
 
+import com.bmwtechworks.order.dto.OrderResponse;
 import com.bmwtechworks.order.model.OrderStatus;
 import com.bmwtechworks.order.model.Orders;
 import com.bmwtechworks.order.repository.OrdersRepository;
@@ -13,9 +14,11 @@ import java.util.UUID;
 public class OrdersService {
     @Autowired
     private OrdersRepository ordersRepository;
+    @Autowired
+    private OrderEnrichmentService enrichmentService;
 
-    public List<Orders> findAllOrders() {
-        return ordersRepository.findAll();
+    public List<OrderResponse> findAllOrders() {
+        return enrichmentService.enrichAll(ordersRepository.findAll());
     }
 
     public Orders findById(UUID id) {
@@ -23,12 +26,16 @@ public class OrdersService {
                 .orElseThrow(() -> new RuntimeException("Order not found with id: " + id));
     }
 
-    public List<Orders> findByDealerId(UUID dealerId) {
-        return ordersRepository.findByDealerId(dealerId);
+    public OrderResponse findByIdEnriched(UUID id) {
+        return enrichmentService.enrich(findById(id));
     }
 
-    public List<Orders> findByCustomerId(UUID customerId) {
-        return ordersRepository.findByCustomerId(customerId);
+    public List<OrderResponse> findByDealerId(UUID dealerId) {
+        return enrichmentService.enrichAll(ordersRepository.findByDealerId(dealerId));
+    }
+
+    public List<OrderResponse> findByCustomerId(UUID customerId) {
+        return enrichmentService.enrichAll(ordersRepository.findByCustomerId(customerId));
     }
 
     public Orders createOrder(Orders order) {

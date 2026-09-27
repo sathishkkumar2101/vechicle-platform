@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Table } from '../../components/ui/Table';
 import { RoleBadge } from '../../components/ui/Badge';
@@ -8,15 +8,26 @@ import { Pagination } from '../../components/ui/Pagination';
 import { Modal, ConfirmDialog } from '../../components/ui/Modal';
 import { initials, formatDate } from '../../lib/format';
 import { useToast } from '../../components/ui/Toast';
-import api from '../../lib/api';
-import type { User, PageResponse, Role } from '../../types';
+import { LoadError } from '../../components/ui/LoadError';
+import { useLoadFailures } from '../../hooks/useLoadFailures';
 
-const ROLE_OPTIONS = [
-  { value: '', label: 'All Roles' },
-  { value: 'ADMIN', label: 'Admin' },
-  { value: 'DEALER', label: 'Dealer' },
-  { value: 'CUSTOMER', label: 'Customer' },
-];
+import api from '../../lib/api';
+import type { User, PageResponse, Role, RoleDetail, Customer } from '../../types';
+
+/**
+ * The roles offered in the forms come from `/api/roles`, so a role created on
+ * the Roles & Permissions screen can actually be assigned to an account
+ * instead of existing only as decoration. A fixed list here had the opposite
+ * effect: custom roles were creatable but unassignable, and the browser carried
+ * a second copy of the backend's rules that could drift out of step with it.
+ *
+ * ADMIN is still never offered as a new value. The backend refuses to let an
+ * administrator change their own role, so presenting it as a choice only
+ * produces a guaranteed failure.
+ */
+function roleLabel(role: string) {
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
 
 export default function AdminUsers() {
   const { success, error } = useToast();
@@ -25,6 +36,9 @@ export default function AdminUsers() {
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
   const [page, setPage] = useState(0);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [roles, setRoles] = useState<RoleDetail[]>([]);
+  const [customerPhones, setCustomerPhones] = useState<Record<string, string>>({});
 
   // Edit user modal
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -54,15 +68,74 @@ export default function AdminUsers() {
 
   function fetchUsers() {
     setLoading(true);
+    setLoadError(null);
     api.get<PageResponse<User> | User[]>('/api/users')
       .then(res => setUsers(Array.isArray(res) ? res : res.content ?? []))
-      .catch(() => setUsers([]))
+      .catch((error: unknown) => {
+        // Reported, not absorbed. A failed request used to leave the table
+        // showing "No users found", which reads as an empty directory rather
+        // than a broken one.
+        setLoadError(error);
+        setUsers([]);
+      })
       .finally(() => setLoading(false));
   }
 
+  /**
+   * `/api/users` only carries a `roleId`, so role names are resolved against
+   * `/api/roles`. Phone numbers live in the customer service, so they are
+   * joined in by `userId` with a fallback to email.
+   */
+  useEffect(() => {
+    api.get<RoleDetail[]>('/api/roles')
+      .then(res => setRoles(Array.isArray(res) ? res : []))
+      .catch(() => setRoles([]));
+
+    api.get<Customer[]>('/api/v1/customers')
+      .then(res => {
+        const list = Array.isArray(res) ? res : [];
+        setCustomerPhones(
+          Object.fromEntries(
+            list
+              .filter(c => !!c.phone)
+              .map(c => [c.userId ?? c.email, c.phone as string])
+          )
+        );
+      })
+      .catch(() => setCustomerPhones({}));
+  }, []);
+
+  const roleNameById = useMemo(
+    () => new Map(roles.map(r => [r.id, r.name])),
+    [roles]
+  );
+
+  /** Prefers the role name the API returns, falling back to the `/api/roles` join. */
+  function roleNameOf(user: User): string | undefined {
+    return user.role ?? (user.roleId ? roleNameById.get(user.roleId) : undefined);
+  }
+
+  function phoneOf(user: User): string {
+    return user.phone ?? customerPhones[user.id] ?? customerPhones[user.email] ?? '';
+  }
+
+  /** Built from `/api/roles` so no role list is hardcoded in the browser. */
+  const assignableRoles = useMemo(
+    () => roles.map(r => r.name).sort(),
+    [roles]
+  );
+
+  const roleFilterOptions = useMemo(
+    () => [
+      { value: '', label: 'All Roles' },
+      ...assignableRoles.map(name => ({ value: name, label: roleLabel(name) })),
+    ],
+    [assignableRoles]
+  );
+
   const filtered = users.filter(u => {
     if (search && !`${u.name} ${u.email}`.toLowerCase().includes(search.toLowerCase())) return false;
-    if (roleFilter && u.role !== roleFilter) return false;
+    if (roleFilter && roleNameOf(u) !== roleFilter) return false;
     return true;
   });
 
@@ -70,20 +143,24 @@ export default function AdminUsers() {
     setEditingUser(user);
     setName(user.name);
     setEmail(user.email);
-    setPhone(user.phone || '');
-    setUserRole(user.role);
+    setPhone(phoneOf(user));
+    setUserRole((roleNameOf(user) ?? 'CUSTOMER') as Role);
     setEditModalOpen(true);
   }
 
   async function handleUpdateUser(e: React.FormEvent) {
     e.preventDefault();
-    if (!editingUser) return;
+    if (!editingUser || saving) return;
     setSaving(true);
     try {
+      /*
+       * PUT /api/users/{id} takes a partial payload: `phone` is not a user
+       * field (it belongs to the customer service) and the password is left
+       * out so the account keeps its current credentials.
+       */
       await api.put(`/api/users/${editingUser.id}`, {
         name,
         email,
-        phone,
         role: userRole,
       });
       success(`User ${email} updated.`);
@@ -122,13 +199,29 @@ export default function AdminUsers() {
     }
   }
 
+  /**
+   * Deletes an account. The customer profile goes with it.
+   *
+   * The user and customer records sit in separate databases with no foreign key
+   * between them, so the cascade is done server-side: the user service removes
+   * the profile before it removes the account, and refuses the whole delete if
+   * it cannot reach the customer service. That is why there is no second call
+   * here — issuing one from the browser used to swallow its own errors and
+   * delete the account regardless, which is precisely how a profile got left
+   * behind, still reachable by user id.
+   *
+   * A 503 here means the customer service is unreachable and the account is
+   * still present, so the message is surfaced rather than hidden and the delete
+   * can simply be retried.
+   */
   async function handleDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
+    const target = deleteTarget;
     try {
-      await api.delete(`/api/users/${deleteTarget.id}`);
-      setUsers(prev => prev.filter(u => u.id !== deleteTarget.id));
-      success(`User ${deleteTarget.email} removed.`);
+      await api.delete(`/api/users/${target.id}`);
+      setUsers(prev => prev.filter(u => u.id !== target.id));
+      success(`User ${target.email} removed.`);
     } catch (err: any) {
       error(err.message || 'Failed to delete user.');
     } finally {
@@ -139,6 +232,12 @@ export default function AdminUsers() {
 
   return (
     <div>
+      {loadError !== null && (
+        <div className="mb-4">
+          <LoadError resource="users" error={loadError} onRetry={fetchUsers} />
+        </div>
+      )}
+
       <PageHeader
         title="Users"
         subtitle="Manage platform user accounts, security roles, and permissions"
@@ -148,7 +247,7 @@ export default function AdminUsers() {
 
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="w-64"><SearchInput placeholder="Search users…" value={search} onChange={e => setSearch(e.target.value)} /></div>
-        <div className="w-36"><Select options={ROLE_OPTIONS} value={roleFilter} onChange={e => setRoleFilter(e.target.value)} /></div>
+        <div className="w-36"><Select options={roleFilterOptions} value={roleFilter} onChange={e => setRoleFilter(e.target.value)} /></div>
         <span className="text-xs text-zinc-600 self-center ml-auto font-mono">{filtered.length} users</span>
       </div>
 
@@ -157,7 +256,7 @@ export default function AdminUsers() {
           loading={loading}
           data={filtered.slice(page * 10, (page + 1) * 10)}
           keyExtractor={u => u.id}
-          emptyMessage="No users found"
+          emptyMessage={loadError !== null ? 'Could not load users' : 'No users found'}
           columns={[
             { key: 'user', header: 'User', render: u => (
               <div className="flex items-center gap-3">
@@ -170,7 +269,7 @@ export default function AdminUsers() {
                 </div>
               </div>
             )},
-            { key: 'role', header: 'Role', render: u => <RoleBadge role={u.role} /> },
+            { key: 'role', header: 'Role', render: u => <RoleBadge role={roleNameOf(u)} /> },
             { key: 'joined', header: 'Joined', render: u => <span className="text-zinc-500 text-xs font-mono">{formatDate(u.createdAt)}</span> },
             { key: 'actions', header: '', align: 'right', render: u => (
               <div className="flex items-center justify-end gap-2">
@@ -199,16 +298,20 @@ export default function AdminUsers() {
         <form onSubmit={handleUpdateUser} className="space-y-4">
           <Input label="Name" value={name} onChange={e => setName(e.target.value)} required />
           <Input label="Email" value={email} onChange={e => setEmail(e.target.value)} required />
-          <Input label="Phone" value={phone} onChange={e => setPhone(e.target.value)} />
+          <Input
+            label="Phone"
+            value={phone}
+            readOnly
+            hint="Customer accounts only — sourced from the customer service."
+          />
           <Select
             label="Security Role"
-            options={[
-              { value: 'CUSTOMER', label: 'Customer' },
-              { value: 'DEALER', label: 'Dealer' },
-              { value: 'ADMIN', label: 'Admin' },
-            ]}
+            options={assignableRoles
+              .filter(name => name !== 'ADMIN' || (editingUser ? roleNameOf(editingUser) === 'ADMIN' : false))
+              .map(name => ({ value: name, label: roleLabel(name) }))}
             value={userRole}
             onChange={e => setUserRole(e.target.value as Role)}
+            hint="An administrator role can be kept but is never granted from this screen."
           />
 
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
@@ -227,13 +330,12 @@ export default function AdminUsers() {
           <Input label="Password" type="password" placeholder="••••••••" value={newPassword} onChange={e => setNewPassword(e.target.value)} required />
           <Select
             label="Assigned Role"
-            options={[
-              { value: 'CUSTOMER', label: 'Customer' },
-              { value: 'DEALER', label: 'Dealer' },
-              { value: 'ADMIN', label: 'Admin' },
-            ]}
+            options={assignableRoles
+              .filter(name => name !== 'ADMIN')
+              .map(name => ({ value: name, label: roleLabel(name) }))}
             value={newRole}
             onChange={e => setNewRole(e.target.value as Role)}
+            hint="Every role defined on the Roles &amp; Permissions screen can be assigned here."
           />
 
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-800">
@@ -249,7 +351,7 @@ export default function AdminUsers() {
         onConfirm={handleDelete}
         loading={deleting}
         title="Delete User"
-        message={`Are you sure you want to delete ${deleteTarget?.email}? This action cannot be undone.`}
+        message={`Delete ${deleteTarget?.email}? Their customer profile is removed with the account. Past orders and appointments are kept for reporting. This action cannot be undone.`}
         confirmLabel="Delete User"
       />
     </div>

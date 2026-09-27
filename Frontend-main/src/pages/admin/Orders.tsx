@@ -7,6 +7,8 @@ import { Pagination } from '../../components/ui/Pagination';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { useToast } from '../../components/ui/Toast';
+import { LoadError } from '../../components/ui/LoadError';
+import { useLoadFailures } from '../../hooks/useLoadFailures';
 import { formatCurrency, formatDate } from '../../lib/format';
 import api from '../../lib/api';
 import type { Order, OrderStatus, Dealer, PageResponse } from '../../types';
@@ -23,6 +25,7 @@ const STATUS_OPTIONS = [
 
 export default function AdminOrders() {
   const { success, error } = useToast();
+  const { failures, clear, retry, guard, has, reloadToken } = useLoadFailures();
   const [orders, setOrders] = useState<Order[]>([]);
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,13 +41,15 @@ export default function AdminOrders() {
 
   useEffect(() => {
     fetchOrders();
-  }, [page]);
+  }, [page, reloadToken]);
 
   function fetchOrders() {
     setLoading(true);
+    clear();
     Promise.all([
-      api.get<PageResponse<Order> | Order[]>('/api/v1/orders').catch(() => []),
-      api.get<Dealer[]>('/dealers').catch(() => []),
+      guard<PageResponse<Order> | Order[]>('orders')(
+        api.get<PageResponse<Order> | Order[]>('/api/v1/orders')),
+      guard<Dealer[]>('dealers')(api.get<Dealer[]>('/dealers')),
     ]).then(([o, d]) => {
       setOrders(Array.isArray(o) ? o : (o as any).content ?? []);
       setDealers(Array.isArray(d) ? d : (d as any).content ?? []);
@@ -88,7 +93,16 @@ export default function AdminOrders() {
 
   return (
     <div>
-      <PageHeader title="Orders" subtitle="All platform vehicle purchase orders and delivery lifecycles" breadcrumbs={[{ label: 'Admin' }, { label: 'Orders' }]} />
+
+{failures.length > 0 && (
+  <div className="mb-4 space-y-3">
+    {failures.map((failure, i) => (
+      <LoadError key={i} resource={failure.resource} error={failure.error} onRetry={retry} />
+    ))}
+  </div>
+)}
+
+<PageHeader title="Orders" subtitle="All platform vehicle purchase orders and delivery lifecycles" breadcrumbs={[{ label: 'Admin' }, { label: 'Orders' }]} />
       
       <div className="flex flex-wrap gap-3 mb-4">
         <div className="w-52"><SearchInput placeholder="Search by order ID…" value={search} onChange={e => setSearch(e.target.value)} /></div>
@@ -102,7 +116,7 @@ export default function AdminOrders() {
           loading={loading}
           data={filtered.slice(page * 10, (page + 1) * 10)}
           keyExtractor={o => o.id}
-          emptyMessage="No orders found"
+          emptyMessage={has('orders') ? 'Could not load orders' : 'No orders found'}
           columns={[
             { key: 'id', header: 'Order #', width: '120px', render: o => <span className="font-mono text-xs text-zinc-400">#{o.id.slice(0, 8)}</span> },
             { key: 'vehicle', header: 'Vehicle', render: o => (

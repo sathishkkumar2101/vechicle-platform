@@ -5,6 +5,9 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Modal, ConfirmDialog } from '../../components/ui/Modal';
 import { useToast } from '../../components/ui/Toast';
+import { LoadError } from '../../components/ui/LoadError';
+import { useLoadFailures } from '../../hooks/useLoadFailures';
+
 import api from '../../lib/api';
 import type { RoleDetail, Permission } from '../../types';
 
@@ -15,6 +18,7 @@ export default function AdminRolesPermissions() {
   // Roles state
   const [roles, setRoles] = useState<RoleDetail[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<RoleDetail | null>(null);
   const [roleName, setRoleName] = useState('');
@@ -39,17 +43,25 @@ export default function AdminRolesPermissions() {
 
   function fetchRoles() {
     setRolesLoading(true);
+    setLoadError(null);
     api.get<RoleDetail[]>('/api/roles')
       .then(res => setRoles(Array.isArray(res) ? res : (res as any).content ?? []))
-      .catch(() => setRoles([]))
+      .catch((error: unknown) => {
+        setLoadError(error);
+        setRoles([]);
+      })
       .finally(() => setRolesLoading(false));
   }
 
   function fetchPermissions() {
     setPermsLoading(true);
+    setLoadError(null);
     api.get<Permission[]>('/api/permissions')
       .then(res => setPermissions(Array.isArray(res) ? res : (res as any).content ?? []))
-      .catch(() => setPermissions([]))
+      .catch((error: unknown) => {
+        setLoadError(error);
+        setPermissions([]);
+      })
       .finally(() => setPermsLoading(false));
   }
 
@@ -151,6 +163,12 @@ export default function AdminRolesPermissions() {
 
   return (
     <div>
+      {loadError !== null && (
+        <div className="mb-4">
+          <LoadError resource="roles and permissions" error={loadError} />
+        </div>
+      )}
+
       <PageHeader
         title="Roles & Permissions"
         subtitle="Configure system access control policies and RBAC security rules"

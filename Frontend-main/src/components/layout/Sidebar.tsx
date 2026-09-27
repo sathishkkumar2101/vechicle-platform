@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useChat } from '../../contexts/ChatContext';
 
 interface NavItem {
   label: string;
@@ -24,12 +25,21 @@ function IconCar() {
 
 export function Sidebar({ items, brandLabel, role }: SidebarProps) {
   const { user, logout } = useAuth();
+  const { totalUnread } = useChat();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
 
   function handleLogout() {
     logout();
     navigate('/login');
+  }
+
+  function badgeFor(path: string): number {
+    if (totalUnread <= 0) return 0;
+    if (path.endsWith('/messages') || path.endsWith('/inbox')) {
+      return totalUnread;
+    }
+    return 0;
   }
 
   const roleColor = role === 'ADMIN' ? 'text-red-400' : role === 'DEALER' ? 'text-amber-400' : 'text-blue-400';
@@ -60,7 +70,7 @@ export function Sidebar({ items, brandLabel, role }: SidebarProps) {
             to={item.path}
             end={item.path.split('/').length <= 2}
             className={({ isActive }) => [
-              'sidebar-item flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors duration-150',
+              'sidebar-item relative flex items-center gap-3 px-3 py-2.5 rounded text-sm transition-colors duration-150',
               isActive
                 ? 'active bg-zinc-800 text-white'
                 : 'text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900',
@@ -68,6 +78,14 @@ export function Sidebar({ items, brandLabel, role }: SidebarProps) {
           >
             <span className="shrink-0">{item.icon}</span>
             {!collapsed && <span className="truncate">{item.label}</span>}
+            {badgeFor(item.path) > 0 && (
+              <span className={[
+                'ml-auto shrink-0 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-zinc-950 text-[10px] font-bold flex items-center justify-center',
+                collapsed ? 'absolute right-1.5 top-1.5' : '',
+              ].join(' ')}>
+                {badgeFor(item.path) > 99 ? '99+' : badgeFor(item.path)}
+              </span>
+            )}
           </NavLink>
         ))}
       </nav>

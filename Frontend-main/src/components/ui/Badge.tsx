@@ -1,5 +1,5 @@
 import React from 'react';
-import type { VehicleStatus, OrderStatus, AppointmentStatus, Role } from '../../types';
+import type { VehicleStatus, OrderStatus, AppointmentStatus } from '../../types';
 
 type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'accent' | 'muted';
 
@@ -71,11 +71,17 @@ export function AppointmentStatusBadge({ status }: { status: AppointmentStatus |
   return <Badge variant={variant}>{label}</Badge>;
 }
 
-export function RoleBadge({ role }: { role: Role }) {
-  const map: Record<Role, { variant: BadgeVariant }> = {
+/**
+ * Renders a security role. The role may be missing (for example when only a
+ * `roleId` is known) or may be a leftover test role, so unknown values degrade
+ * to a muted placeholder instead of an empty badge.
+ */
+export function RoleBadge({ role }: { role?: string }) {
+  const map: Record<string, { variant: BadgeVariant }> = {
     ADMIN: { variant: 'danger' },
     DEALER: { variant: 'accent' },
     CUSTOMER: { variant: 'info' },
   };
-  return <Badge variant={map[role]?.variant ?? 'default'}>{role}</Badge>;
+  const variant = role ? map[role]?.variant ?? 'default' : 'muted';
+  return <Badge variant={variant}>{role || '—'}</Badge>;
 }

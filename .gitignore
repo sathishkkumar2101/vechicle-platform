@@ -1,0 +1,23 @@
+# Secrets — never commit. The JWT signing key and any other credential must
+# come from the environment; see Vehicle-Platform-Development-Backend/.env.example
+.env
+.env.*
+!.env.example
+
+# Java / Maven
+target/
+*.class
+
+# Node
+node_modules/
+dist/
+build/
+.cache/
+.vite/
+*.tsbuildinfo
+
+# Logs and local scratch
+*.log
+logs/
+.playwright-report/
+test-results/

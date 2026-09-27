@@ -3,22 +3,39 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { LoadError } from '../../components/ui/LoadError';
+import { useLoadFailures } from '../../hooks/useLoadFailures';
+import { ChatStartButton } from '../../components/chat/ChatStartButton';
 import api from '../../lib/api';
-import type { Dealer } from '../../types';
+import type { Dealer, PageResponse, Vehicle } from '../../types';
 
 export default function DealerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [dealer, setDealer] = useState<Dealer | null>(null);
+  const [vehicleCount, setVehicleCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const { failures, guard, has, retry } = useLoadFailures();
 
+  // Both requests used to `.catch(() => null)` / `.catch(() => [])`. The dealer
+  // branch of the render below ends in `null`, so a failed dealer fetch produced
+  // a blank page under a heading reading "Dealer" — indistinguishable from a
+  // dealer that does not exist, with nothing to click and no message. A failed
+  // vehicle fetch reported "0 vehicles" on a live dealer page. Both are now
+  // reported, and the page can be retried.
   useEffect(() => {
     setLoading(true);
-    api.get<Dealer>(`/dealers/${id}`)
-      .then(setDealer)
-      .catch(() => setDealer(null))
+    Promise.all([
+      guard('dealer')(api.get<Dealer>(`/dealers/${id}`)),
+      guard('inventory')(api.get<PageResponse<Vehicle> | Vehicle[]>(`/api/vehicles/dealer/${id}`)),
+    ])
+      .then(([d, v]) => {
+        setDealer(Array.isArray(d) ? null : (d as unknown as Dealer | null));
+        const list = Array.isArray(v) ? v : (v as PageResponse<Vehicle>)?.content ?? [];
+        setVehicleCount(list.length);
+      })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, retry]);
 
   return (
     <div>
@@ -43,25 +60,14 @@ export default function DealerDetail() {
               </div>
               <div>
                 <p className="font-display text-xl font-semibold text-white">{dealer.name}</p>
-                <p className="text-sm text-zinc-500">{dealer.location || [dealer.city, dealer.state].filter(Boolean).join(', ') || 'Authorized Dealer'}</p>
-                {dealer.rating && (
-                  <div className="flex items-center gap-1 mt-1">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <svg key={i} className={`w-3.5 h-3.5 ${i < Math.floor(dealer.rating!) ? 'text-amber-400' : 'text-zinc-700'}`} fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14 2 9.27l6.91-1.01L12 2z" />
-                      </svg>
-                    ))}
-                    <span className="text-xs text-zinc-400 ml-1">{dealer.rating}</span>
-                  </div>
-                )}
+                <p className="text-sm text-zinc-500">{dealer.location || 'Authorized Dealer'}</p>
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3">
               {[
-                { label: 'Address', value: dealer.location || [dealer.address, dealer.city, dealer.state, dealer.zipCode].filter(Boolean).join(', ') || 'Authorized Dealership Center' },
-                { label: 'Phone', value: dealer.phone || '+1 (800) 555-BMW1' },
-                { label: 'Email', value: dealer.email || `contact@${dealer.name.toLowerCase().replace(/[^a-z0-9]/g, '')}.com` },
-                { label: 'Inventory', value: dealer.totalVehicles ? `${dealer.totalVehicles} vehicles available` : undefined },
+                { label: 'Location', value: dealer.location || 'Not specified' },
+                { label: 'Inventory', value: has('inventory') ? '—' : vehicleCount > 0 ? `${vehicleCount} vehicles available` : 'No vehicles listed' },
+                { label: 'Dealer ID', value: dealer.dealerId },
               ].filter(i => i.value).map(item => (
                 <div key={item.label} className="flex items-start gap-3 text-sm">
                   <span className="text-zinc-600 w-20 shrink-0">{item.label}</span>
@@ -71,8 +77,40 @@ export default function DealerDetail() {
             </div>
           </div>
           <Button className="w-full" size="lg" onClick={() => navigate('/customer/appointments/book')}>Schedule Visit</Button>
+          <ChatStartButton
+            label="Chat with this dealership"
+            redirectTo="/customer/messages"
+            full
+            request={{
+              contextType: 'GENERAL',
+              dealerId: dealer.dealerId,
+              // The dealer service id is not the auth user id that a
+              // conversation's participant list is built from, so the client
+              // cannot recognise an existing thread from `dealerId` alone and
+              // opened a new one on every visit. Passing the dealer's user id
+              // gives the de-duplication something it can actually match.
+              recipientUserId: dealer.userId,
+              title: dealer.name,
+            }}
+          />
         </div>
-      ) : null}
+      ) : has('dealer') ? (
+        /* Reached when the dealer request failed rather than returned nothing,
+           which is why this is separated from the "no such dealer" case. */
+        <LoadError
+          resource="this dealer"
+          error={failures.find(f => f.resource === 'dealer')?.error}
+          impact="There is nothing to show yet."
+          onRetry={retry}
+        />
+      ) : (
+        <div className="py-16 text-center">
+          <p className="text-zinc-500 text-sm">This dealer could not be found.</p>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/customer/dealers')} className="mt-3">
+            Back to dealers
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -30,6 +31,13 @@ public class Appointment {
     private LocalDateTime appointmentDate;
 
     private String serviceType;
+
+    /**
+     * What the workshop quoted for this work. Nullable: a booking can exist
+     * before it has been costed, and an unknown quote must read as "not quoted"
+     * rather than as zero.
+     */
+    private BigDecimal estimatedCost;
 
     @Enumerated(EnumType.STRING)
     private AppointmentStatus status = AppointmentStatus.REQUESTED;

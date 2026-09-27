@@ -6,6 +6,8 @@ import { ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { KpiCard } from '../../components/ui/Card';
 import { OrderStatusBadge } from '../../components/ui/Badge';
+import { LoadError } from '../../components/ui/LoadError';
+import { DashboardSkeleton } from '../../components/ui/Skeleton';
 import { formatCurrency, formatDate } from '../../lib/format';
 
 export default function AdminDashboard() {
@@ -16,16 +18,30 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadFailures, setLoadFailures] = useState<{ resource: string; error: unknown }[]>([]);
+  const [reloadToken, setReloadToken] = useState(0);
 
   useEffect(() => {
     setLoading(true);
+    setLoadFailures([]);
+
+    // Each request reports its own failure instead of resolving to an empty
+    // array. The page still renders whatever did load, but the operator is
+    // told which section is missing data rather than being shown a dashboard
+    // full of zeroes that reads as a healthy, empty system.
+    const guard = <T,>(resource: string) => (promise: Promise<T>) =>
+      promise.catch((error: unknown) => {
+        setLoadFailures(prev => [...prev, { resource, error }]);
+        return [] as unknown as T;
+      });
+
     Promise.all([
-      api.get<User[]>('/api/users').catch(() => []),
-      api.get<Customer[]>('/api/v1/customers').catch(() => []),
-      api.get<Dealer[]>('/dealers').catch(() => []),
-      api.get<Vehicle[]>('/api/vehicles').catch(() => []),
-      api.get<Order[]>('/api/v1/orders').catch(() => []),
-      api.get<Appointment[]>('/api/appointments').catch(() => []),
+      guard<User[]>('users')(api.get<User[]>('/api/users')),
+      guard<Customer[]>('customers')(api.get<Customer[]>('/api/v1/customers')),
+      guard<Dealer[]>('dealers')(api.get<Dealer[]>('/dealers')),
+      guard<Vehicle[]>('vehicles')(api.get<Vehicle[]>('/api/vehicles')),
+      guard<Order[]>('orders')(api.get<Order[]>('/api/v1/orders')),
+      guard<Appointment[]>('appointments')(api.get<Appointment[]>('/api/appointments')),
     ]).then(([u, c, d, v, o, a]) => {
       setUsers(Array.isArray(u) ? u : (u as any).content ?? []);
       setCustomers(Array.isArray(c) ? c : (c as any).content ?? []);
@@ -34,7 +50,7 @@ export default function AdminDashboard() {
       setOrders(Array.isArray(o) ? o : (o as any).content ?? []);
       setAppointments(Array.isArray(a) ? a : (a as any).content ?? []);
     }).finally(() => setLoading(false));
-  }, []);
+  }, [reloadToken]);
 
   const totalRevenue = orders.reduce((acc, o) => acc + (o.totalAmount || 0), 0);
   const pendingOrdersCount = orders.filter(o => 
@@ -55,6 +71,28 @@ export default function AdminDashboard() {
     <div>
       <PageHeader title="Platform Control Center" subtitle="Enterprise-wide performance and management overview" />
 
+      {loadFailures.length > 0 && (
+        <div className="mb-6 space-y-3">
+          {loadFailures.map((failure, i) => (
+            <LoadError
+              key={`${failure.resource}-${i}`}
+              resource={failure.resource}
+              error={failure.error}
+              onRetry={() => setReloadToken(t => t + 1)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* `loading` was tracked but never consulted, so the KPI cards painted
+          zeros and the inventory panel painted "No vehicle data available" from
+          the first frame until the requests resolved. Those are the same
+          strings a genuinely empty system produces, so the dashboard briefly
+          asserted a fact it had not established yet. */}
+      {loading ? (
+        <DashboardSkeleton />
+      ) : (
+      <>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <KpiCard label="Total Users" value={users.length} />
         <KpiCard label="Active Vehicles" value={vehicles.length} />
@@ -148,6 +186,8 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+      </>
+      )}
     </div>
   );
 }

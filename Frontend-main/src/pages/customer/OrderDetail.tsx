@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { OrderStatusBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { ChatStartButton } from '../../components/chat/ChatStartButton';
 import { formatCurrency, formatDate, formatMileage } from '../../lib/format';
 import api from '../../lib/api';
 import type { Order } from '../../types';
@@ -27,7 +28,24 @@ export default function OrderDetail() {
       <PageHeader
         breadcrumbs={[{ label: 'Orders' }]}
         title={loading ? '—' : `Order #${order?.id}`}
-        actions={<Button variant="ghost" size="sm" onClick={() => navigate(-1)}>← Back</Button>}
+        actions={
+          <div className="flex items-center gap-2">
+            {order && (
+              <ChatStartButton
+                label="Chat about this order"
+                redirectTo="/customer/messages"
+                variant="accent"
+                request={{
+                  contextType: 'ORDER',
+                  contextId: order.id,
+                  dealerId: order.dealerId,
+                  title: `Order #${order.id}`,
+                }}
+              />
+            )}
+            <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>← Back</Button>
+          </div>
+        }
       />
 
       {loading ? (

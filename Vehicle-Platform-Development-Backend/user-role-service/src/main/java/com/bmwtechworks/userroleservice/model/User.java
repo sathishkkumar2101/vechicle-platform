@@ -2,7 +2,9 @@ package com.bmwtechworks.userroleservice.model;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -32,4 +34,7 @@ public class User {
 
     @Column(nullable = false)
     private UUID roleId;
+
+    @CreationTimestamp
+    private LocalDateTime createdAt;
 }

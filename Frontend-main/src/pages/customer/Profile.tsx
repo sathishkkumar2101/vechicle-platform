@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../../components/layout/PageHeader';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { LoadError } from '../../components/ui/LoadError';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../components/ui/Toast';
 import { initials } from '../../lib/format';
@@ -14,6 +15,18 @@ export default function CustomerProfile() {
   const [loading, setLoading] = useState(false);
   
   const [customerId, setCustomerId] = useState('');
+  /**
+   * Recorded rather than discarded.
+   *
+   * The fetch of `/api/v1/customers/me` used to end in `.catch(() => {})`, so a
+   * failure left `customerId` empty and the phone number blank while the form
+   * looked fully loaded and editable. Saving then took the "no profile yet, so
+   * provision one" branch and issued a create against a customer record that
+   * already existed. A customer whose phone had not loaded could therefore save
+   * a blank number over their own details, and the page gave no hint that the
+   * prefill had failed.
+   */
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [form, setForm] = useState({
     name: user?.name ?? '',
     phone: '',
@@ -33,8 +46,9 @@ export default function CustomerProfile() {
             email: res.email || prev.email,
           }));
         }
+        setLoadError(null);
       })
-      .catch(() => {});
+      .catch(setLoadError);
   }, []);
 
   function set(field: string, value: string) {
@@ -81,6 +95,17 @@ export default function CustomerProfile() {
         breadcrumbs={[{ label: 'Customer' }, { label: 'Profile' }]}
         actions={!editing ? <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>Edit Profile</Button> : null}
       />
+      {loadError !== null && (
+        /* Editing stays available, but the customer is told the details below
+           were not loaded so a save cannot silently blank a field. */
+        <div className="mb-5">
+          <LoadError
+            resource="your profile"
+            error={loadError}
+            impact="The details below may be incomplete. Saving now could overwrite them with blanks."
+          />
+        </div>
+      )}
       <div className="max-w-lg">
         {/* Avatar */}
         <div className="flex items-center gap-4 mb-8 p-5 bg-zinc-900 border border-zinc-800 rounded">

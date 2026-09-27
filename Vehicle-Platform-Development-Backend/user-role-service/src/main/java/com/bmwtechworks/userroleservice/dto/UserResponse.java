@@ -1,5 +1,6 @@
 package com.bmwtechworks.userroleservice.dto;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record UserResponse(
@@ -7,6 +8,8 @@ public record UserResponse(
         String username,
         String name,
         String email,
-        UUID roleId
+        UUID roleId,
+        String role,
+        LocalDateTime createdAt
 ) {
 }

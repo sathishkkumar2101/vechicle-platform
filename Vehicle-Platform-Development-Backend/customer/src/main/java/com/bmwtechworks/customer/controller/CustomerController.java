@@ -48,4 +48,20 @@ public class CustomerController {
     public String deleteCustomer(@PathVariable UUID id){
         return customerService.deleteCustomer(id);
     }
+
+    /**
+     * Removes the profile attached to an account, addressed by user id.
+     *
+     * <p>Exists so that deleting a user can take its profile with it. The user
+     * and customer tables are in separate databases, so the caller has to
+     * orchestrate the two deletes; this is the half of that it cannot infer
+     * from the account id alone. Always 204, including when the account never
+     * had a profile, so a caller deleting a dealer or an administrator is not
+     * treated as a failure.
+     */
+    @DeleteMapping("/by-user/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCustomerByUserId(@PathVariable UUID userId){
+        customerService.deleteByUserId(userId);
+    }
 }

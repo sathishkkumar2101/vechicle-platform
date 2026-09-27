@@ -23,6 +23,14 @@ public class Role {
     @Column(nullable = false, unique = true)
     private String name;
 
+    /**
+     * What the role is for, shown next to the name on the roles screen. Free
+     * text and optional: a role is identified by its name, not by whether
+     * somebody filled this in.
+     */
+    @Column(length = 500)
+    private String description;
+
     @ElementCollection
     @CollectionTable(
             name = "role_permissions",

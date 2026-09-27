@@ -40,6 +40,21 @@ react(),
           changeOrigin: true,
           secure: false,
         },
+        // The backend services no longer publish host ports, so the dev server
+        // reaches them the same way the browser does in production: through the
+        // frontend container's nginx, which proxies /dealers to the API gateway
+        // and /ws to messaging-service.
+        '/dealers': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+        '/ws': {
+          target: 'ws://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+        },
       },
       watch: {
         ignored: [

@@ -209,7 +209,10 @@ public class DealerService {
                 existingOrder.dealerId(),       // preserve original dealerId
                 orderDTO.status(),              // only update status from request
                 existingOrder.createdAt(),
-                existingOrder.totalAmount()     // preserve original totalAmount
+                existingOrder.totalAmount(),    // preserve original totalAmount
+                null,                           // customer/vehicle/dealer are resolved
+                null,                           // by the order service on read; they are
+                null                            // not part of what a status update may set
         );
 
         return orderClient.updateOrder(orderId, statusOnlyUpdate, "DEALER", dealerIdStr);
