@@ -1,18 +1,40 @@
-INSERT INTO roles (id, name)
+INSERT INTO roles (id, name, description)
 VALUES
-    ('00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f', 'DEALER'),
+    ('00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f', 'DEALER',
+     'Runs a dealership: manages its own inventory, the orders placed with it and the customers who bought from it.'),
 
-    ('68d5fcf1-7d3d-4132-80bc-942e5439eda1', 'ADMIN'),
+    ('68d5fcf1-7d3d-4132-80bc-942e5439eda1', 'ADMIN',
+     'Full access to the platform, including users, roles, dealers and every other module.'),
 
-    ('eed8c871-b3ac-4e13-9241-f82c7c16f78a', 'TEST_ADMIN'),
+    ('eed8c871-b3ac-4e13-9241-f82c7c16f78a', 'TEST_ADMIN',
+     'Placeholder left over from permission testing. Not used by any account.'),
 
-    ('d1c0685b-f176-4f2a-b98b-216a72c7fa27', 'TEST_ADMIN1'),
+    ('d1c0685b-f176-4f2a-b98b-216a72c7fa27', 'TEST_ADMIN1',
+     'Placeholder left over from permission testing. Not used by any account.'),
 
-    ('90c03be2-40f6-4006-94d9-6275c2f80824', 'GATEWAY_TEST_ROLE'),
+    ('90c03be2-40f6-4006-94d9-6275c2f80824', 'GATEWAY_TEST_ROLE',
+     'Placeholder left over from gateway authorisation testing. Not used by any account.'),
 
-    ('f2f947ac-465b-4ec2-9c59-3d1f3a0e75f2', 'CUSTOMER')
+    ('f2f947ac-465b-4ec2-9c59-3d1f3a0e75f2', 'CUSTOMER',
+     'Buys a vehicle, tracks the order from confirmation to delivery, and books servicing once the car is theirs.')
 
     ON CONFLICT (id) DO NOTHING;
+
+-- The description was added after these rows were first seeded, and the insert
+-- above does nothing when a row already exists, so existing rows would show a
+-- blank description on the roles screen.
+UPDATE roles
+SET description = v.description
+FROM (VALUES
+        ('00c22be3-7bdf-4bb7-ab4a-0fb77d2fe83f', 'Runs a dealership: manages its own inventory, the orders placed with it and the customers who bought from it.'),
+        ('68d5fcf1-7d3d-4132-80bc-942e5439eda1', 'Full access to the platform, including users, roles, dealers and every other module.'),
+        ('eed8c871-b3ac-4e13-9241-f82c7c16f78a', 'Placeholder left over from permission testing. Not used by any account.'),
+        ('d1c0685b-f176-4f2a-b98b-216a72c7fa27', 'Placeholder left over from permission testing. Not used by any account.'),
+        ('90c03be2-40f6-4006-94d9-6275c2f80824', 'Placeholder left over from gateway authorisation testing. Not used by any account.'),
+        ('f2f947ac-465b-4ec2-9c59-3d1f3a0e75f2', 'Buys a vehicle, tracks the order from confirmation to delivery, and books servicing once the car is theirs.')
+     ) AS v(id, description)
+WHERE roles.id = v.id::uuid
+  AND roles.description IS NULL;
 
 -- 2. ROLE → PERMISSION MAPPINGS
 

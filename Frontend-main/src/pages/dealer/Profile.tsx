@@ -66,7 +66,12 @@ export default function DealerProfile() {
             <div className="bg-zinc-950/50 border border-zinc-800 rounded p-3">
               <p className="text-xs text-zinc-500 uppercase tracking-wider mb-0.5">Total Inventory</p>
               <p className="text-sm font-medium text-white">
-                {vehicleCount !== null ? `${vehicleCount} vehicles assigned` : '5 vehicles assigned'}
+                {/* This used to fall back to a literal "5 vehicles assigned",
+                    so the card showed a fabricated count while the request was
+                    still in flight and stayed wrong if it failed. An unknown
+                    count reads as unknown, which is what an em dash already
+                    means on the three cards above. */}
+                {vehicleCount !== null ? `${vehicleCount} vehicles assigned` : '—'}
               </p>
             </div>
           </div>

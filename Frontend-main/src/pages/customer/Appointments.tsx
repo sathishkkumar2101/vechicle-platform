@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { Table } from '../../components/ui/Table';
 import { AppointmentStatusBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { ChatStartButton } from '../../components/chat/ChatStartButton';
 import { formatDate, formatCurrency } from '../../lib/format';
 import api from '../../lib/api';
 import type { Appointment, PageResponse } from '../../types';
@@ -48,6 +49,22 @@ export default function CustomerAppointments() {
               </div>
             )},
             { key: 'status', header: 'Status', render: a => <AppointmentStatusBadge status={a.status} /> },
+            { key: 'chat', header: '', width: '120px', render: a => (
+              a.dealerId ? (
+                <ChatStartButton
+                  label="Discuss"
+                  variant="ghost"
+                  size="sm"
+                  redirectTo="/customer/messages"
+                  request={{
+                    contextType: 'APPOINTMENT',
+                    contextId: a.id,
+                    dealerId: a.dealerId,
+                    title: `Appointment #${a.id}`,
+                  }}
+                />
+              ) : null
+            )},
           ]}
         />
       </div>

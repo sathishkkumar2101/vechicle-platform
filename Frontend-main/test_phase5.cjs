@@ -119,8 +119,17 @@ async function runTests() {
   }
 
   if (dealer) {
+    // /api/v1/orders is scoped to the caller; a dealership reads its own orders
+    // through /dealers/orders/{dealerId}. Assert both halves so the rule cannot
+    // regress in either direction.
     let dealerOrders = await get('/api/v1/orders', dealer.headers);
-    check('Dealer GET /api/v1/orders -> 200', dealerOrders.status === 200);
+    check('Dealer GET /api/v1/orders is refused -> 403', dealerOrders.status === 403);
+
+    let dealerOwn = await get('/dealers/me', dealer.headers);
+    if (dealerOwn.status === 200 && dealerOwn.body && dealerOwn.body.dealerId) {
+      let ownOrders = await get(`/dealers/orders/${dealerOwn.body.dealerId}`, dealer.headers);
+      check('Dealer GET own /dealers/orders/{id} -> 200', ownOrders.status === 200);
+    }
 
     let dealerAppts = await get('/api/appointments', dealer.headers);
     check('Dealer GET /api/appointments -> 200', dealerAppts.status === 200);
@@ -129,7 +138,10 @@ async function runTests() {
   // === 1. Register a new customer ===
   console.log('\n=== CUSTOMER REGISTRATION ===');
   const testEmail = `testcustomer_${Date.now()}@example.com`;
-  const registerRes = await request({
+
+  // Privilege escalation: an anonymous caller asking for ADMIN is rejected
+  // outright rather than silently downgraded, so no ADMIN account is created.
+  const escalateRes = await request({
     hostname: HOST, port: PORT, path: '/api/users', method: 'POST',
     headers: { 'Content-Type': 'application/json' }
   }, {
@@ -139,8 +151,23 @@ async function runTests() {
     password: 'Test@12345',
     role: 'ADMIN' // Malicious request trying to be ADMIN
   });
+  check('Anonymous ADMIN registration is refused -> 403', escalateRes.status === 403);
+  check('Refused registration created no account', !escalateRes.body || !escalateRes.body.id);
+
+  // The legitimate path still works: public self-registration yields CUSTOMER.
+  const registerRes = await request({
+    hostname: HOST, port: PORT, path: '/api/users', method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }, {
+    username: `testcustomer_${Date.now()}`,
+    name: 'Test Customer',
+    email: testEmail,
+    password: 'Test@12345',
+    role: 'CUSTOMER'
+  });
   check('Registration succeeds', registerRes.status === 201);
   check('Registration returns correct email', registerRes.body && registerRes.body.email === testEmail);
+  check('Registration assigned CUSTOMER role', registerRes.body && registerRes.body.role === 'CUSTOMER');
   
   // Login with new customer
   const newCustomer = await login(testEmail, 'Test@12345');
@@ -165,18 +192,40 @@ async function runTests() {
   console.log('\n=== ORDER CREATION ===');
   let vehicleId = Array.isArray(vehicles.body) ? vehicles.body[0].vehicleId : vehicles.body.content[0].vehicleId;
   let dealerId = Array.isArray(dealers.body) ? dealers.body[0].dealerId : dealers.body.content[0].dealerId;
-  
+
+  // A self-registered user has an account but no customer profile yet. The
+  // gateway lets a CUSTOMER create their own profile, so establish it first --
+  // this is the real onboarding contract, not a test shortcut.
+  let profileLookup = await get('/api/v1/customers/me', newCustomer.headers);
+  let customerId = profileLookup.body && profileLookup.body.id;
+  if (!customerId) {
+    let createProfile = await request({
+      hostname: HOST, port: PORT, path: '/api/v1/customers', method: 'POST',
+      headers: newCustomer.headers
+    }, {
+      name: 'Test Customer',
+      email: testEmail,
+      phone: '+91 90000 00000',
+      address: ['Test Address']
+    });
+    check('Customer can create own profile', createProfile.status === 201);
+    customerId = createProfile.body && createProfile.body.id;
+  } else {
+    check('Customer profile already present', true);
+  }
+
   let orderRes = await request({
     hostname: HOST, port: PORT, path: '/api/v1/orders', method: 'POST',
     headers: newCustomer.headers
   }, {
-    customerId: me.body.id,
+    customerId: customerId,
     vehicleId: vehicleId,
     dealerId: dealerId,
-    status: 'PENDING',
+    status: 'CREATED', // real OrderStatus; PENDING is not in the enum
     totalAmount: 50000
   });
-  check('Order creation succeeds', orderRes.status === 201);
+  check('Order creation succeeds', orderRes.status === 200); // controller returns 200 OK
+  const createdOrderId = orderRes.body && orderRes.body.id;
 
   let orders = await get('/api/v1/orders', newCustomer.headers);
   check('Order appears in My Orders', orders.status === 200 && Array.isArray(orders.body) && orders.body.length > 0);
@@ -200,6 +249,34 @@ async function runTests() {
     // Verify it changed
     let updatedProfile = await get('/api/v1/customers/me', newCustomer.headers);
     check('Profile was updated', updatedProfile.body && updatedProfile.body.phone === '1234567890');
+  }
+
+  // === Cleanup ===
+  // Remove the throwaway order and account so repeated runs do not pollute the
+  // dataset. The profile is not deleted here: the user and customer tables are
+  // separate databases with no foreign key between them, so the account delete
+  // cascades across to the customer service itself. The orphan check below is
+  // what holds that behaviour to account.
+  console.log('\n=== CLEANUP ===');
+  if (admin && createdOrderId) {
+    const delOrder = await request({
+      hostname: HOST, port: PORT, path: `/api/v1/orders/${createdOrderId}`, method: 'DELETE',
+      headers: admin.headers
+    });
+    check('Cleanup deletes the test order', delOrder.status === 200 || delOrder.status === 204);
+  }
+  if (admin) {
+    const del = await request({
+      hostname: HOST, port: PORT, path: `/api/users/${registerRes.body.id}`, method: 'DELETE',
+      headers: admin.headers
+    });
+    check('Cleanup deletes the test account', del.status === 204 || del.status === 200);
+  }
+  if (admin) {
+    const orphan = await get('/api/v1/customers', admin.headers);
+    const stillThere = Array.isArray(orphan.body)
+      && orphan.body.some(c => c.userId === registerRes.body.id);
+    check('No customer profile is left orphaned by the account delete', !stillThere);
   }
 
   // === Summary ===

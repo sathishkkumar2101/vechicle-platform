@@ -6,10 +6,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.validation.constraints.NotNull;
+import org.hibernate.annotations.CreationTimestamp;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,4 +36,12 @@ public class Customers {
 
     @ElementCollection
     private List<String> address;
+
+    /**
+     * When the account was created, so the customer list can show a join date
+     * instead of leaving it blank. Set once on insert and not editable
+     * afterwards.
+     */
+    @CreationTimestamp
+    private LocalDateTime createdAt;
 }

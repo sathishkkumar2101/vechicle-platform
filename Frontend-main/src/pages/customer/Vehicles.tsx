@@ -5,12 +5,23 @@ import { VehicleStatusBadge } from '../../components/ui/Badge';
 import { SearchInput, Select } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
 import { VehicleCardSkeleton } from '../../components/ui/Skeleton';
+import { LoadError } from '../../components/ui/LoadError';
 import { formatCurrency } from '../../lib/format';
 import { getVehicleImage } from '../../lib/vehicleImages';
 import api from '../../lib/api';
 import type { Vehicle, PageResponse } from '../../types';
 
-const MAKES = ['', 'BMW', 'Mercedes-Benz', 'Porsche', 'Audi', 'Lamborghini', 'Ferrari'];
+/**
+ * No "make" filter.
+ *
+ * There was one, offering BMW, Mercedes-Benz, Porsche, Audi, Lamborghini and
+ * Ferrari. The `vehicle` table has no make or brand column at all, so the filter
+ * was a substring match of the brand name against `model` — and every seeded
+ * model is a BMW. Four of the five brands therefore matched nothing, and
+ * choosing one produced an empty grid with no explanation, indistinguishable
+ * from having no stock. The Model filter beside it already covers the same
+ * ground honestly.
+ */
 const STATUSES = [
   { value: '', label: 'All Status' },
   { value: 'AVAILABLE', label: 'Available' },
@@ -30,8 +41,8 @@ export default function CustomerVehicles() {
   const navigate = useNavigate();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [search, setSearch] = useState('');
-  const [make, setMake] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [selectedVariant, setSelectedVariant] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
@@ -44,8 +55,13 @@ export default function CustomerVehicles() {
       .then(res => {
         const data = Array.isArray(res) ? res : res.content ?? [];
         setVehicles(data);
+        setLoadError(null);
       })
-      .catch(() => setVehicles([]))
+      // Recorded, not swallowed. This used to `setVehicles([])`, so a failed
+      // request and a genuinely empty inventory produced the same screen: a
+      // "no vehicles match" message on a page whose filter bar was still live,
+      // which reads as "the showroom is empty" rather than "we could not ask".
+      .catch(setLoadError)
       .finally(() => setLoading(false));
   }, []);
 
@@ -76,7 +92,6 @@ export default function CustomerVehicles() {
       if (!matchSearch) return false;
     }
     if (status && v.status !== status) return false;
-    if (make && !v.model.toLowerCase().includes(make.toLowerCase())) return false;
     if (selectedModel && v.model !== selectedModel) return false;
     if (selectedVariant && v.trim !== selectedVariant) return false;
     if (selectedColor && v.color !== selectedColor) return false;
@@ -88,12 +103,11 @@ export default function CustomerVehicles() {
   });
 
   const hasActiveFilters = Boolean(
-    search || make || selectedModel || selectedVariant || selectedColor || priceRange || status !== 'AVAILABLE'
+    search || selectedModel || selectedVariant || selectedColor || priceRange || status !== 'AVAILABLE'
   );
 
   function handleReset() {
     setSearch('');
-    setMake('');
     setSelectedModel('');
     setSelectedVariant('');
     setSelectedColor('');
@@ -123,13 +137,6 @@ export default function CustomerVehicles() {
             placeholder="Search keyword, VIN…"
             value={search}
             onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-        <div className="w-36">
-          <Select
-            options={MAKES.map(m => ({ value: m, label: m || 'All Makes' }))}
-            value={make}
-            onChange={e => setMake(e.target.value)}
           />
         </div>
         <div className="w-36">
@@ -175,6 +182,28 @@ export default function CustomerVehicles() {
         <p className="text-xs text-zinc-500 self-center ml-auto font-mono">{filtered.length} vehicles</p>
       </div>
 
+      {loadError !== null && (
+        <div className="mb-5">
+          <LoadError
+            resource="vehicles"
+            error={loadError}
+            impact="The inventory below is empty because it could not be loaded, not because there is none."
+            onRetry={() => {
+              setLoadError(null);
+              setLoading(true);
+              api.get<PageResponse<Vehicle> | Vehicle[]>('/api/vehicles')
+                .then(res => {
+                  const data = Array.isArray(res) ? res : res.content ?? [];
+                  setVehicles(data);
+                  setLoadError(null);
+                })
+                .catch(setLoadError)
+                .finally(() => setLoading(false));
+            }}
+          />
+        </div>
+      )}
+
       {/* Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
         {loading
@@ -182,11 +211,17 @@ export default function CustomerVehicles() {
           : filtered.length === 0
           ? (
             <div className="col-span-full py-20 text-center">
-              <p className="text-zinc-600 text-sm">No vehicles match your search.</p>
-              {hasActiveFilters && (
-                <Button variant="ghost" size="sm" onClick={handleReset} className="mt-3">
-                  Clear Filters
-                </Button>
+              {loadError !== null ? (
+                <p className="text-zinc-600 text-sm">Inventory unavailable.</p>
+              ) : (
+                <>
+                  <p className="text-zinc-600 text-sm">No vehicles match your search.</p>
+                  {hasActiveFilters && (
+                    <Button variant="ghost" size="sm" onClick={handleReset} className="mt-3">
+                      Clear Filters
+                    </Button>
+                  )}
+                </>
               )}
             </div>
           )

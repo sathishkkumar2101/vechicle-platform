@@ -119,8 +119,18 @@ async function runTests() {
   }
 
   if (dealer) {
+    // A DEALER must not be able to read the cross-role order feed. The gateway
+    // scopes /api/v1/orders to the caller, and a dealership reads its own
+    // orders through /dealers/orders/{dealerId} instead. Both halves are
+    // asserted here so the rule cannot regress in either direction.
     let dealerOrders = await get('/api/v1/orders', dealer.headers);
-    check('Dealer GET /api/v1/orders -> 200', dealerOrders.status === 200);
+    check('Dealer GET /api/v1/orders is refused -> 403', dealerOrders.status === 403);
+
+    let ownDealer = await get('/dealers/me', dealer.headers);
+    if (ownDealer.status === 200 && ownDealer.body && ownDealer.body.dealerId) {
+      let ownOrders = await get(`/dealers/orders/${ownDealer.body.dealerId}`, dealer.headers);
+      check('Dealer GET own /dealers/orders/{id} -> 200', ownOrders.status === 200);
+    }
 
     let dealerAppts = await get('/api/appointments', dealer.headers);
     check('Dealer GET /api/appointments -> 200', dealerAppts.status === 200);
@@ -129,14 +139,28 @@ async function runTests() {
   // === 4. Security regression (IDOR) ===
   console.log('\n=== SECURITY REGRESSION (IDOR via port 3000 proxy) ===');
   if (admin && customer) {
-    // Get an order that belongs to someone else
+    // orders.customerId is the customer *profile* id, which is a different
+    // value from the account's user id. Ownership has to be compared against
+    // the caller's own profile, and the target order has to be one that is
+    // genuinely not theirs -- picking an arbitrary order proves nothing.
+    let me = await get('/api/v1/customers/me', customer.headers);
+    let ownCustomerId = me.body && me.body.id;
+
     let allOrders = await get('/api/v1/orders', admin.headers);
-    if (Array.isArray(allOrders.body) && allOrders.body.length > 0) {
-      let otherOrder = allOrders.body[0];
-      let idor = await get(`/api/v1/orders/${otherOrder.id}`, customer.headers);
-      // Customer should get 403 if order doesn't belong to them
-      check(`Customer IDOR on order ${otherOrder.id} -> blocked (403 or own)`,
-        idor.status === 403 || (idor.status === 200 && idor.body && idor.body.customerId === '6683e0c9-cf0e-4963-acae-12020540b8ba'));
+    if (ownCustomerId && Array.isArray(allOrders.body) && allOrders.body.length > 0) {
+      let ownOrder = allOrders.body.find(o => o.customerId === ownCustomerId);
+      let otherOrder = allOrders.body.find(o => o.customerId !== ownCustomerId);
+
+      if (ownOrder) {
+        let mine = await get(`/api/v1/orders/${ownOrder.id}`, customer.headers);
+        check(`Customer reads own order ${ownOrder.id} -> 200`, mine.status === 200);
+      }
+
+      if (otherOrder) {
+        let idor = await get(`/api/v1/orders/${otherOrder.id}`, customer.headers);
+        check(`Customer IDOR on someone else's order ${otherOrder.id} -> 403`,
+          idor.status === 403);
+      }
     }
   }
 

@@ -5,6 +5,7 @@ import com.bmwtechworks.userroleservice.dto.RoleResponse;
 import com.bmwtechworks.userroleservice.service.RoleService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,12 +22,14 @@ public class RoleController {
     }
 
     @GetMapping
+    @PreAuthorize("hasRole('ADMIN')")
     public List<RoleResponse> getAllRoles() {
 
         return roleService.getAllRoles();
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public RoleResponse getRoleById(
             @PathVariable UUID id
     ) {
@@ -36,6 +39,7 @@ public class RoleController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("hasRole('ADMIN')")
     public RoleResponse createRole(
             @Valid @RequestBody RoleRequest request
     ) {
@@ -44,6 +48,7 @@ public class RoleController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
     public RoleResponse updateRole(
             @PathVariable UUID id,
             @Valid @RequestBody RoleRequest request
@@ -54,6 +59,7 @@ public class RoleController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("hasRole('ADMIN')")
     public void deleteRole(
             @PathVariable UUID id
     ) {

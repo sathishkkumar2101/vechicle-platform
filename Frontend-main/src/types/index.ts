@@ -2,9 +2,11 @@ export type Role = 'CUSTOMER' | 'DEALER' | 'ADMIN';
 
 export interface User {
   id: string;
+  username?: string;
   email: string;
   name: string;
   role: Role;
+  roleId?: string;
   phone?: string;
   createdAt?: string;
 }
@@ -56,14 +58,12 @@ export interface Dealer {
   userId?: string;
   name: string;
   location?: string;
-  city?: string;
-  state?: string;
-  email?: string;
-  phone?: string;
-  totalVehicles?: number;
-  rating?: number;
-  address?: string;
-  zipCode?: string;
+}
+
+export interface DealerInput {
+  username?: string;
+  name: string;
+  location?: string;
 }
 
 export interface Customer {
@@ -131,3 +131,17 @@ export interface DashboardStats {
   totalAppointments?: number;
   scheduledAppointments?: number;
 }
+
+export interface Permission {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface RoleDetail {
+  id: string;
+  name: string;
+  description?: string;
+  permissions?: Permission[];
+}
+

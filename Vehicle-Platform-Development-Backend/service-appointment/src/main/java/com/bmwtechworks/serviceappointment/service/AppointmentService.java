@@ -1,5 +1,7 @@
 package com.bmwtechworks.serviceappointment.service;
 
+import com.bmwtechworks.serviceappointment.dto.AppointmentResponse;
+import com.bmwtechworks.serviceappointment.dto.ServiceTypeResponse;
 import com.bmwtechworks.serviceappointment.model.Appointment;
 import com.bmwtechworks.serviceappointment.model.AppointmentStatus;
 
@@ -12,17 +14,27 @@ public interface AppointmentService {
 
     Appointment getAppointmentById(UUID id);
 
-    List<Appointment> getAllAppointments();
+    AppointmentResponse getAppointmentByIdEnriched(UUID id);
+
+    List<AppointmentResponse> getAllAppointments();
     
-    List<Appointment> getAppointmentsByCustomerId(UUID customerId);
+    List<AppointmentResponse> getAppointmentsByCustomerId(UUID customerId);
 
-    List<Appointment> getAppointmentsByDealerId(UUID dealerId);
+    List<AppointmentResponse> getAppointmentsByDealerId(UUID dealerId);
 
-    Appointment updateAppointment(UUID id, Appointment appointment);
+    AppointmentResponse updateAppointment(UUID id, Appointment appointment);
 
-    Appointment updateServiceType(UUID id, String serviceType);
+    AppointmentResponse updateServiceType(UUID id, String serviceType);
 
-    Appointment updateStatus(UUID id, AppointmentStatus status);
+    /**
+     * The services that can currently be booked.
+     *
+     * <p>The single source of truth behind both the booking form's options and
+     * the validation in {@link #updateServiceType}, so the two cannot disagree.
+     */
+    List<ServiceTypeResponse> listServiceTypes();
+
+    AppointmentResponse updateStatus(UUID id, AppointmentStatus status);
 
     void deleteAppointment(UUID id);
 }

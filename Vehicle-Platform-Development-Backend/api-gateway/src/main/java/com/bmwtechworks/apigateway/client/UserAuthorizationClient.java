@@ -1,5 +1,6 @@
 package com.bmwtechworks.apigateway.client;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.stereotype.Component;
@@ -12,11 +13,14 @@ public class UserAuthorizationClient {
 
     private final LoadBalancerClient loadBalancerClient;
     private final RestClient restClient;
+    private final String internalSecret;
 
     public UserAuthorizationClient(
-            LoadBalancerClient loadBalancerClient
+            LoadBalancerClient loadBalancerClient,
+            @Value("${internal.service.secret}") String internalSecret
     ) {
         this.loadBalancerClient = loadBalancerClient;
+        this.internalSecret = internalSecret;
         this.restClient = RestClient.builder().build();
     }
 
@@ -31,24 +35,20 @@ public class UserAuthorizationClient {
             );
         }
 
-        System.out.println(
-                ">>> USER ROLE SERVICE INSTANCE: "
-                        + instance.getUri()
-        );
-
         String url = instance.getUri()
                 + "/api/internal/users/"
                 + userId
                 + "/authorization";
 
-        System.out.println(
-                ">>> USER AUTHORIZATION URL: "
-                        + url
-        );
-
+        /*
+         * The internal endpoint is not exposed to browsers, but the service
+         * still authenticates this call so that reaching the container by any
+         * other route does not grant authorization lookups.
+         */
         return restClient
                 .get()
                 .uri(url)
+                .header("X-Internal-Secret", internalSecret)
                 .retrieve()
                 .body(AuthorizationResponse.class);
     }

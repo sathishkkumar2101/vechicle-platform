@@ -34,6 +34,28 @@ react(),
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      proxy: {
+        '/api': {
+          target: 'http://localhost:8080',
+          changeOrigin: true,
+          secure: false,
+        },
+        // The backend services no longer publish host ports, so the dev server
+        // reaches them the same way the browser does in production: through the
+        // frontend container's nginx, which proxies /dealers to the API gateway
+        // and /ws to messaging-service.
+        '/dealers': {
+          target: 'http://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+        },
+        '/ws': {
+          target: 'ws://localhost:3000',
+          changeOrigin: true,
+          secure: false,
+          ws: true,
+        },
+      },
       watch: {
         ignored: [
           '**/.figma/**',

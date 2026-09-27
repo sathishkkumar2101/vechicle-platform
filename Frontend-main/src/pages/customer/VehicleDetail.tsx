@@ -5,11 +5,14 @@ import { PageHeader } from '../../components/layout/PageHeader';
 import { VehicleStatusBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { Skeleton } from '../../components/ui/Skeleton';
+import { LoadError } from '../../components/ui/LoadError';
+import { useLoadFailures } from '../../hooks/useLoadFailures';
 import { Select } from '../../components/ui/Input';
+import { ChatStartButton } from '../../components/chat/ChatStartButton';
 import { formatCurrency, formatMileage } from '../../lib/format';
 import { getVehicleImage } from '../../lib/vehicleImages';
 import api from '../../lib/api';
-import type { Vehicle, Dealer } from '../../types';
+import type { Vehicle, Dealer, PageResponse } from '../../types';
 
 export default function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +22,7 @@ export default function VehicleDetail() {
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [dealers, setDealers] = useState<Dealer[]>([]);
   const [loading, setLoading] = useState(true);
+  const { failures, guard, has, retry } = useLoadFailures();
   const [activeImg, setActiveImg] = useState(0);
 
   const [orderModalOpen, setOrderModalOpen] = useState(false);
@@ -28,15 +32,15 @@ export default function VehicleDetail() {
 
   useEffect(() => {
     setLoading(true);
-    api.get<Vehicle>(`/api/vehicles/${id}`)
-      .then(setVehicle)
-      .catch(() => setVehicle(null))
+    guard<Vehicle | null>('vehicle')(api.get<Vehicle>(`/api/vehicles/${id}`))
+      .then(v => setVehicle(v ?? null))
       .finally(() => setLoading(false));
 
-    api.get<any>('/dealers')
-      .then(res => setDealers(Array.isArray(res) ? res : res.content ?? []))
-      .catch(() => {});
-  }, [id]);
+    guard<Dealer[] | PageResponse<Dealer>>('dealers')(
+      api.get<Dealer[] | PageResponse<Dealer>>('/dealers'),
+    )
+      .then(res => setDealers(Array.isArray(res) ? res : res?.content ?? []));
+  }, [id, retry]);
 
   const images = vehicle?.images?.length
     ? vehicle.images
@@ -167,10 +171,38 @@ export default function VehicleDetail() {
               <Button variant="secondary" size="lg" onClick={() => navigate('/customer/dealers')}>
                 Contact Dealer
               </Button>
+              {vehicle.dealerId && (
+                <ChatStartButton
+                  label="Ask about this vehicle"
+                  redirectTo="/customer/messages"
+                  variant="accent"
+                  size="lg"
+                  request={{
+                    contextType: 'VEHICLE',
+                    contextId: vehicle.vehicleId,
+                    dealerId: vehicle.dealerId,
+                    title: vehicle.model,
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
-      ) : null}
+      ) : has('vehicle') ? (
+        <LoadError
+          resource="this vehicle"
+          error={failures.find(f => f.resource === 'vehicle')?.error}
+          impact="There is nothing to show yet."
+          onRetry={retry}
+        />
+      ) : (
+        <div className="py-16 text-center">
+          <p className="text-zinc-500 text-sm">This vehicle could not be found.</p>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/customer/vehicles')} className="mt-3">
+            Back to inventory
+          </Button>
+        </div>
+      )}
 
       {/* Order Modal */}
       {orderModalOpen && vehicle && (
@@ -180,13 +212,25 @@ export default function VehicleDetail() {
             <p className="text-sm text-zinc-400 mb-6">You are requesting to purchase the {vehicle.model} for {formatCurrency(vehicle.price)}.</p>
             
             <div className="space-y-4 mb-6">
-              <Select
-                label="Select Dealer"
-                options={dealers.map(d => ({ value: String(d.dealerId), label: `${d.name} - ${d.location}` }))}
-                value={selectedDealerId}
-                onChange={e => setSelectedDealerId(e.target.value)}
-                placeholder="Choose a preferred dealer"
-              />
+              {has('dealers') ? (
+                /* An empty dropdown here looked identical to "no dealers yet" and
+                   left Submit Request failing on an empty selection. */
+                <LoadError
+                  resource="dealers"
+                  error={failures.find(f => f.resource === 'dealers')?.error}
+                  impact="An order cannot be submitted until this list loads."
+                  onRetry={retry}
+                />
+              ) : (
+                <Select
+                  label="Select Dealer"
+                  options={dealers.map(d => ({ value: String(d.dealerId), label: `${d.name} - ${d.location}` }))}
+                  value={selectedDealerId}
+                  onChange={e => setSelectedDealerId(e.target.value)}
+                  placeholder={dealers.length === 0 ? 'No dealers available' : 'Choose a preferred dealer'}
+                  disabled={dealers.length === 0}
+                />
+              )}
               {orderError && <p className="text-xs text-red-400">{orderError}</p>}
             </div>
 

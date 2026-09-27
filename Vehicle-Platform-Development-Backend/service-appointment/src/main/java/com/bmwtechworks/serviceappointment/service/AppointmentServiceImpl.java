@@ -1,9 +1,13 @@
 package com.bmwtechworks.serviceappointment.service;
 
+import com.bmwtechworks.serviceappointment.dto.AppointmentResponse;
+import com.bmwtechworks.serviceappointment.dto.ServiceTypeResponse;
 import com.bmwtechworks.serviceappointment.exception.AppointmentNotFoundException;
+import com.bmwtechworks.serviceappointment.exception.InvalidServiceTypeException;
 import com.bmwtechworks.serviceappointment.model.Appointment;
 import com.bmwtechworks.serviceappointment.model.AppointmentStatus;
 import com.bmwtechworks.serviceappointment.repository.AppointmentRepository;
+import com.bmwtechworks.serviceappointment.repository.ServiceTypeRepository;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,9 +17,17 @@ import java.util.UUID;
 public class AppointmentServiceImpl implements AppointmentService {
 
     private final AppointmentRepository appointmentRepository;
+    private final ServiceTypeRepository serviceTypeRepository;
+    private final AppointmentEnrichmentService enrichmentService;
 
-    public AppointmentServiceImpl(AppointmentRepository appointmentRepository) {
+    public AppointmentServiceImpl(
+            AppointmentRepository appointmentRepository,
+            ServiceTypeRepository serviceTypeRepository,
+            AppointmentEnrichmentService enrichmentService
+    ) {
         this.appointmentRepository = appointmentRepository;
+        this.serviceTypeRepository = serviceTypeRepository;
+        this.enrichmentService = enrichmentService;
     }
 
     @Override
@@ -35,23 +47,31 @@ public class AppointmentServiceImpl implements AppointmentService {
     }
 
     @Override
-    public List<Appointment> getAllAppointments() {
+    public AppointmentResponse getAppointmentByIdEnriched(UUID id) {
 
-        return appointmentRepository.findAll();
+        return enrichmentService.enrich(getAppointmentById(id));
     }
 
     @Override
-    public List<Appointment> getAppointmentsByCustomerId(UUID customerId) {
-        return appointmentRepository.findByCustomerId(customerId);
+    public List<AppointmentResponse> getAllAppointments() {
+
+        return enrichmentService.enrichAll(appointmentRepository.findAll());
     }
 
     @Override
-    public List<Appointment> getAppointmentsByDealerId(UUID dealerId) {
-        return appointmentRepository.findByDealerId(dealerId);
+    public List<AppointmentResponse> getAppointmentsByCustomerId(UUID customerId) {
+        return enrichmentService.enrichAll(
+                appointmentRepository.findByCustomerId(customerId));
     }
 
     @Override
-    public Appointment updateAppointment(
+    public List<AppointmentResponse> getAppointmentsByDealerId(UUID dealerId) {
+        return enrichmentService.enrichAll(
+                appointmentRepository.findByDealerId(dealerId));
+    }
+
+    @Override
+    public AppointmentResponse updateAppointment(
             UUID id,
             Appointment updatedAppointment) {
 
@@ -86,11 +106,17 @@ public class AppointmentServiceImpl implements AppointmentService {
                 updatedAppointment.getStatus()
         );
 
-        return appointmentRepository.save(existingAppointment);
+        existingAppointment.setEstimatedCost(
+                updatedAppointment.getEstimatedCost()
+        );
+
+        return enrichmentService.enrich(
+                appointmentRepository.save(existingAppointment)
+        );
     }
 
     @Override
-    public Appointment updateServiceType(
+    public AppointmentResponse updateServiceType(
             UUID id,
             String serviceType) {
 
@@ -101,13 +127,43 @@ public class AppointmentServiceImpl implements AppointmentService {
                                         "Appointment not found with id: " + id
                                 ));
 
-        appointment.setServiceType(serviceType);
+        // Rejecting an unknown code here is the point of the service_types
+        // table. Without this the column accepted any string, so a client that
+        // sent a value from a stale or invented list got a 200 and a row that
+        // nothing downstream could interpret.
+        String normalised = normaliseServiceType(serviceType);
+        if (serviceTypeRepository.findByCodeAndActiveTrue(normalised).isEmpty()) {
+            throw new InvalidServiceTypeException(
+                    "Unknown service type '" + serviceType + "'. Call "
+                            + "GET /api/appointments/service-types for the accepted values."
+            );
+        }
 
-        return appointmentRepository.save(appointment);
+        appointment.setServiceType(normalised);
+
+        return enrichmentService.enrich(appointmentRepository.save(appointment));
+    }
+
+    /**
+     * Trims and upper-cases a submitted service type.
+     *
+     * <p>Without this, {@code "oil change"} and {@code "OIL_CHANGE"} would be two
+     * different values in the column and only one of them would match a row,
+     * even though the customer selected the same service.
+     */
+    private String normaliseServiceType(String serviceType) {
+        return serviceType == null ? "" : serviceType.trim().toUpperCase();
     }
 
     @Override
-    public Appointment updateStatus(
+    public List<ServiceTypeResponse> listServiceTypes() {
+        return serviceTypeRepository.findByActiveTrueOrderByLabelAsc().stream()
+                .map(ServiceTypeResponse::from)
+                .toList();
+    }
+
+    @Override
+    public AppointmentResponse updateStatus(
             UUID id,
             AppointmentStatus status) {
 
@@ -120,7 +176,7 @@ public class AppointmentServiceImpl implements AppointmentService {
 
         appointment.setStatus(status);
 
-        return appointmentRepository.save(appointment);
+        return enrichmentService.enrich(appointmentRepository.save(appointment));
     }
 
     @Override

@@ -40,6 +40,17 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-oauth2-jose</artifactId>
         </dependency>
+        <!--
+            Needed so /api/users can be exposed as a resource server: the
+            service verifies the caller's own JWT to learn who is making the
+            request, rather than trusting an X-User-Id header. Rejects
+            tokens that are unsigned, signed with the wrong key, or missing
+            the issuer/audience claims. Same artifact the gateway uses.
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-oauth2-resource-server</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-restclient</artifactId>
